@@ -58,6 +58,22 @@ function ExpenseTrackerApp() {
     }
   }, []);
 
+  // Global keyboard shortcuts (N or / to log new expense)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') {
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N' || e.key === '/') {
+        e.preventDefault();
+        scrollToForm();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Save to localStorage whenever expenses change
   const updateExpensesAndPersist = (newExpenses: Expense[]) => {
     setExpenses(newExpenses);
@@ -292,6 +308,7 @@ function ExpenseTrackerApp() {
                 <span>Quick Power Tips</span>
               </div>
               <ul className="space-y-1 text-[11px] text-zinc-500 list-disc list-inside">
+                <li>Press <span className="font-mono text-zinc-400">N</span> or <span className="font-mono text-zinc-400">/</span> anywhere to quickly focus the expense logger.</li>
                 <li>Tap any one-tap preset button to instantly log frequent micro-expenses.</li>
                 <li>Press <span className="font-mono text-zinc-400">Enter</span> to submit from description or amount field.</li>
                 <li>Filter by category pill or search description/amount in real time.</li>
