@@ -116,6 +116,12 @@ function ExpenseTrackerApp() {
 
   // Add new expense with future date backend guard and userId ownership binding
   const handleAddExpense = (newExpData: Omit<Expense, 'id' | 'createdAt'>) => {
+    // Strictly block December 2026 onwards
+    if (newExpData.date >= '2026-12-01') {
+      showToast('December 2026 onwards is strictly locked. No logging permitted.', true);
+      return;
+    }
+
     // Guard against future dates
     if (isFutureDate(newExpData.date, todayDate)) {
       showToast('Rejected: Cannot log expenses for future dates.', true);
@@ -142,6 +148,11 @@ function ExpenseTrackerApp() {
 
   // Update existing expense with IDOR and ownership authorization check
   const handleUpdateExpense = (updated: Expense) => {
+    if (updated.date >= '2026-12-01') {
+      showToast('December 2026 onwards is strictly locked. Editing disabled.', true);
+      return;
+    }
+
     const perm = checkExpensePermission(currentUser, updated, 'edit');
     if (!perm.allowed) {
       showToast(perm.reason || 'Unauthorized to update this expense.', true);
@@ -157,6 +168,11 @@ function ExpenseTrackerApp() {
   const handleDeleteExpense = (id: string) => {
     const target = expenses.find((e) => e.id === id);
     if (!target) return;
+
+    if (target.date >= '2026-12-01') {
+      showToast('December 2026 onwards is strictly locked. Deletion disabled.', true);
+      return;
+    }
 
     const perm = checkExpensePermission(currentUser, target, 'delete');
     if (!perm.allowed) {
@@ -226,7 +242,7 @@ function ExpenseTrackerApp() {
     input?.focus();
   };
 
-  // Calculate unique months available
+  // Calculate unique months available (Strictly capped before December 2026)
   const availableMonths = useMemo(() => {
     const monthSet = new Set<string>();
     monthSet.add(selectedMonth);
@@ -234,7 +250,10 @@ function ExpenseTrackerApp() {
     for (const exp of expenses) {
       monthSet.add(exp.date.slice(0, 7));
     }
-    return Array.from(monthSet).sort().reverse();
+    return Array.from(monthSet)
+      .filter((m) => m <= '2026-11')
+      .sort()
+      .reverse();
   }, [expenses, selectedMonth, todayDate]);
 
   // Aggregate summary for selected month
@@ -363,6 +382,7 @@ function ExpenseTrackerApp() {
                   onAddExpense={handleAddExpense}
                   onInstantToast={(msg) => showToast(msg)}
                   currentDateISO={todayDate}
+                  selectedMonth={selectedMonth}
                 />
               </div>
 

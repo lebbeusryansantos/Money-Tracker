@@ -130,6 +130,14 @@ export function validateDate(
     return { isValid: false, error: 'Invalid date format (YYYY-MM-DD)' };
   }
 
+  // Strict December 2026 onwards lock
+  if (raw >= '2026-12-01') {
+    return {
+      isValid: false,
+      error: 'December 2026 onwards is strictly locked. No logging or modifications allowed.',
+    };
+  }
+
   const dateObj = new Date(raw);
   if (isNaN(dateObj.getTime())) {
     return { isValid: false, error: 'Invalid calendar date' };
@@ -139,6 +147,25 @@ export function validateDate(
     return { isValid: false, error: `Future dates beyond today (${maxDate}) are locked` };
   }
 
+  return { isValid: true };
+}
+
+/**
+ * Validates time format (HH:MM) when active (Nov 12 onwards)
+ */
+export function validateTime(
+  time?: string,
+  date?: string
+): { isValid: boolean; error?: string } {
+  if (!date || date < '2026-11-12') {
+    return { isValid: true }; // Ignored for Nov 11 and before
+  }
+  if (!time || !time.trim()) {
+    return { isValid: false, error: 'Time is required for November 12 onwards' };
+  }
+  if (!/^\d{2}:\d{2}$/.test(time)) {
+    return { isValid: false, error: 'Invalid time format (HH:MM)' };
+  }
   return { isValid: true };
 }
 
@@ -165,6 +192,7 @@ export interface FormValidationResult {
     amount?: string;
     category?: string;
     date?: string;
+    time?: string;
   };
   sanitizedDescription: string;
   parsedAmount: number;
@@ -176,6 +204,7 @@ export function validateExpenseForm(
     amount: string | number;
     category: string;
     date: string;
+    time?: string;
   },
   maxDate?: string
 ): FormValidationResult {
@@ -183,15 +212,21 @@ export function validateExpenseForm(
   const amtResult = validateAmount(data.amount);
   const catResult = validateCategory(data.category);
   const dateResult = validateDate(data.date, maxDate);
+  const timeResult = validateTime(data.time, data.date);
 
   const errors: FormValidationResult['errors'] = {};
   if (!descResult.isValid) errors.description = descResult.error;
   if (!amtResult.isValid) errors.amount = amtResult.error;
   if (!catResult.isValid) errors.category = catResult.error;
   if (!dateResult.isValid) errors.date = dateResult.error;
+  if (!timeResult.isValid) errors.time = timeResult.error;
 
   const isValid =
-    descResult.isValid && amtResult.isValid && catResult.isValid && dateResult.isValid;
+    descResult.isValid &&
+    amtResult.isValid &&
+    catResult.isValid &&
+    dateResult.isValid &&
+    timeResult.isValid;
 
   return {
     isValid,

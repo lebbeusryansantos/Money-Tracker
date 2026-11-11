@@ -49,18 +49,22 @@ export default function DashboardMetrics({
 
   const goToNextMonth = () => {
     if (hasNext) {
-      onSelectMonth(availableMonths[currentIndex - 1]);
+      const nextCandidate = availableMonths[currentIndex - 1];
+      if (nextCandidate >= '2026-12') return;
+      onSelectMonth(nextCandidate);
     } else {
-      // Increment month mathematically
+      // Decrement month mathematically but strictly cap before December 2026
       const [y, m] = selectedMonth.split('-').map(Number);
       const nextDate = new Date(y, m, 1);
       const nextKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+      if (nextKey >= '2026-12') return;
       onSelectMonth(nextKey);
     }
   };
 
   const currentMonthKey = todayDate.slice(0, 7);
   const isCurrentMonth = selectedMonth === currentMonthKey;
+  const isDecLocked = selectedMonth >= '2026-12';
 
   // Maximum weekly total for relative bar scaling
   const maxWeeklyTotal = Math.max(
@@ -78,10 +82,10 @@ export default function DashboardMetrics({
             <span>{summary.label}</span>
           </div>
 
-          {(summary.isLocked || selectedMonth > currentMonthKey) && (
+          {(isDecLocked || summary.isLocked || selectedMonth > currentMonthKey) && (
             <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
               <Lock className="w-3 h-3" />
-              <span>Read-Only Period</span>
+              <span>{isDecLocked ? 'Strictly Locked Period' : 'Read-Only Period'}</span>
             </span>
           )}
 
@@ -106,8 +110,9 @@ export default function DashboardMetrics({
           </button>
           <button
             onClick={goToNextMonth}
+            disabled={selectedMonth >= '2026-11' || isDecLocked}
             aria-label="Next month"
-            className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

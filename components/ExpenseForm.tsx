@@ -17,7 +17,13 @@ import {
   MIN_DESCRIPTION_LENGTH,
   MAX_SINGLE_EXPENSE_AMOUNT,
 } from '@/lib/validation';
-import { getClientTodayDateISO, getMillisecondsUntilMidnight } from '@/lib/dateUtils';
+import {
+  getClientTodayDateISO,
+  getMillisecondsUntilMidnight,
+  isTimeFeatureEnabled,
+  getCurrentTimeHHMM,
+  isDecemberOnwards,
+} from '@/lib/dateUtils';
 import {
   Plus,
   Zap,
@@ -25,26 +31,32 @@ import {
   SlidersHorizontal,
   X,
   AlertCircle,
-  Calendar,
+  Lock,
+  Clock,
 } from 'lucide-react';
 
 interface ExpenseFormProps {
   onAddExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => void;
   onInstantToast?: (message: string) => void;
   currentDateISO?: string;
+  selectedMonth?: string;
 }
 
 export default function ExpenseForm({
   onAddExpense,
   onInstantToast,
   currentDateISO,
+  selectedMonth = '2026-11',
 }: ExpenseFormProps) {
+  const isMonthLocked = isDecemberOnwards(selectedMonth);
+
   // Today's date with real-time midnight rollover sync
   const [activeDate, setActiveDate] = useState<string>(currentDateISO || '2026-11-11');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<Category>('Food');
   const [date, setDate] = useState<string>(currentDateISO || '2026-11-11');
+  const [time, setTime] = useState<string>('12:00');
   const [presets, setPresets] = useState<PresetExpense[]>(DEFAULT_PRESETS);
   const [isManagingPresets, setIsManagingPresets] = useState(false);
   const [newPresetLabel, setNewPresetLabel] = useState('');
@@ -57,19 +69,23 @@ export default function ExpenseForm({
     description: boolean;
     amount: boolean;
     date: boolean;
+    time: boolean;
   }>({
     description: false,
     amount: false,
     date: false,
+    time: false,
   });
 
   const descInputRef = useRef<HTMLInputElement>(null);
+  const timeActive = isTimeFeatureEnabled(date);
 
   // Synchronize client date on mount and schedule automatic midnight rollover
   useEffect(() => {
     const today = getClientTodayDateISO();
     setActiveDate(today);
     setDate((prev) => (prev === '2026-11-11' ? today : prev));
+    setTime(getCurrentTimeHHMM());
 
     // Timer to update date automatically when tab is open across midnight
     let timerId: NodeJS.Timeout;
@@ -79,6 +95,7 @@ export default function ExpenseForm({
         const newToday = getClientTodayDateISO();
         setActiveDate(newToday);
         setDate(newToday);
+        setTime(getCurrentTimeHHMM());
         scheduleMidnightRollover();
       }, ms);
     };
@@ -118,23 +135,26 @@ export default function ExpenseForm({
     }
   };
 
-  // Real-time validation computation
+  // Real-time validation computation (capped at 2026-11-30)
   const validation = useMemo(() => {
+    const effectiveMaxDate = activeDate < '2026-11-30' ? activeDate : '2026-11-30';
     return validateExpenseForm(
       {
         description,
         amount,
         category,
         date,
+        time: timeActive ? time : undefined,
       },
-      activeDate
+      effectiveMaxDate
     );
-  }, [description, amount, category, date, activeDate]);
+  }, [description, amount, category, date, time, timeActive, activeDate]);
 
   const trimmedDescLen = description.trim().length;
 
   const handleAddPreset = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isMonthLocked) return;
     const parsedAmount = parseFloat(newPresetAmount);
     if (!newPresetLabel.trim() || isNaN(parsedAmount) || parsedAmount <= 0) return;
 
@@ -153,19 +173,28 @@ export default function ExpenseForm({
   };
 
   const handleDeletePreset = (id: string) => {
+    if (isMonthLocked) return;
     const updated = presets.filter((p) => p.id !== id);
     savePresets(updated);
   };
 
   const handleResetPresets = () => {
+    if (isMonthLocked) return;
     savePresets(DEFAULT_PRESETS);
     setIsManagingPresets(false);
   };
 
-  // Submit main form with strict validation
+  // Submit main form with strict validation and December lock check
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setTouched({ description: true, amount: true, date: true });
+    if (isMonthLocked || isDecemberOnwards(date)) {
+      if (onInstantToast) {
+        onInstantToast('December 2026 onwards is strictly locked. No logging permitted.');
+      }
+      return;
+    }
+
+    setTouched({ description: true, amount: true, date: true, time: true });
 
     if (!validation.isValid) {
       return;
@@ -173,6 +202,7 @@ export default function ExpenseForm({
 
     onAddExpense({
       date: date || activeDate,
+      time: timeActive ? (time || getCurrentTimeHHMM()) : undefined,
       description: validation.sanitizedDescription,
       category,
       amount: validation.parsedAmount,
@@ -184,18 +214,25 @@ export default function ExpenseForm({
 
     setDescription('');
     setAmount('');
-    setTouched({ description: false, amount: false, date: false });
+    setTouched({ description: false, amount: false, date: false, time: false });
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1200);
 
-    // Keep focus on description input for rapid subsequent entry logging
     descInputRef.current?.focus();
   };
 
   // One-tap quick preset log
   const handlePresetClick = (preset: PresetExpense) => {
+    if (isMonthLocked) {
+      if (onInstantToast) {
+        onInstantToast('December 2026 onwards is strictly locked. Button access disabled.');
+      }
+      return;
+    }
+
     onAddExpense({
       date: activeDate,
+      time: isTimeFeatureEnabled(activeDate) ? getCurrentTimeHHMM() : undefined,
       description: preset.description,
       category: preset.category,
       amount: preset.amount,
@@ -210,7 +247,21 @@ export default function ExpenseForm({
   };
 
   return (
-    <div className="rounded-xl bg-zinc-900/80 border border-zinc-800 p-3 sm:p-4 shadow-sm backdrop-blur-sm">
+    <div className={`rounded-xl border p-3 sm:p-4 shadow-sm backdrop-blur-sm transition-all ${
+      isMonthLocked
+        ? 'bg-zinc-950/80 border-amber-500/20 opacity-70'
+        : 'bg-zinc-900/80 border-zinc-800'
+    }`}>
+      {/* December 2026 Strict Lockdown Notice */}
+      {isMonthLocked && (
+        <div className="mb-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 text-xs text-amber-300">
+          <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="font-medium">
+            December 2026 onwards is strictly locked. You are not allowed to type anything or access any buttons in this period.
+          </span>
+        </div>
+      )}
+
       {/* Quick Presets Bar */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
@@ -220,24 +271,26 @@ export default function ExpenseForm({
             <span className="text-[10px] text-zinc-500 hidden sm:inline">(Tap to log instantly)</span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsManagingPresets(!isManagingPresets)}
-            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-          >
-            <SlidersHorizontal className="w-3 h-3" />
-            <span>{isManagingPresets ? 'Done' : 'Customize'}</span>
-          </button>
+          {!isMonthLocked && (
+            <button
+              type="button"
+              onClick={() => setIsManagingPresets(!isManagingPresets)}
+              className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+            >
+              <SlidersHorizontal className="w-3 h-3" />
+              <span>{isManagingPresets ? 'Done' : 'Customize'}</span>
+            </button>
+          )}
         </div>
 
         {/* Preset management drawer */}
-        {isManagingPresets && (
+        {!isMonthLocked && isManagingPresets && (
           <div className="p-3 mb-3 rounded-lg bg-zinc-950 border border-zinc-800 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-zinc-300">Manage Shortcuts</span>
               <button
                 onClick={handleResetPresets}
-                className="text-[11px] text-zinc-500 hover:text-zinc-300 underline"
+                className="text-[11px] text-zinc-500 hover:text-zinc-300 underline cursor-pointer"
               >
                 Reset to default
               </button>
@@ -309,8 +362,9 @@ export default function ExpenseForm({
               <button
                 key={preset.id}
                 type="button"
+                disabled={isMonthLocked}
                 onClick={() => handlePresetClick(preset)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 text-zinc-300 text-xs font-mono whitespace-nowrap transition-all active:scale-95 cursor-pointer group"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 text-zinc-300 text-xs font-mono whitespace-nowrap transition-all active:scale-95 cursor-pointer group disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span
                   className="w-1.5 h-1.5 rounded-full"
@@ -328,13 +382,14 @@ export default function ExpenseForm({
       {/* Main Rapid Input Form with Strict Field Validation */}
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5 items-start">
-          {/* Description (Span 5 on Desktop) */}
-          <div className="sm:col-span-5 relative">
+          {/* Description */}
+          <div className={timeActive ? 'sm:col-span-4' : 'sm:col-span-5'}>
             <div className="relative">
               <input
                 ref={descInputRef}
                 type="text"
                 required
+                disabled={isMonthLocked}
                 maxLength={MAX_DESCRIPTION_LENGTH}
                 value={description}
                 onBlur={() => setTouched((p) => ({ ...p, description: true }))}
@@ -342,14 +397,13 @@ export default function ExpenseForm({
                   setDescription(e.target.value);
                   setTouched((p) => ({ ...p, description: true }));
                 }}
-                placeholder="What did you spend on? (min 3 chars)"
-                className={`w-full bg-zinc-950/90 border rounded-lg px-3 py-2 pr-14 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-all ${
+                placeholder={isMonthLocked ? 'Locked (no typing allowed)' : 'What did you spend on? (min 3 chars)'}
+                className={`w-full bg-zinc-950/90 border rounded-lg px-3 py-2 pr-14 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                   touched.description && validation.errors.description
                     ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
                     : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700'
                 }`}
               />
-              {/* Unobtrusive Character Counter */}
               <span
                 className={`absolute right-2.5 top-2.5 text-[10px] font-mono select-none ${
                   trimmedDescLen > 0 && trimmedDescLen < MIN_DESCRIPTION_LENGTH
@@ -363,7 +417,6 @@ export default function ExpenseForm({
               </span>
             </div>
 
-            {/* Inline Error Indicator */}
             {touched.description && validation.errors.description && (
               <div className="flex items-center gap-1 text-rose-400 text-xs mt-1 animate-in fade-in">
                 <AlertCircle className="w-3 h-3 shrink-0" />
@@ -372,8 +425,8 @@ export default function ExpenseForm({
             )}
           </div>
 
-          {/* Amount (Span 3 on Desktop) */}
-          <div className="sm:col-span-3 relative">
+          {/* Amount */}
+          <div className="sm:col-span-3">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-sm select-none">
                 ₱
@@ -384,6 +437,7 @@ export default function ExpenseForm({
                 min="0.01"
                 max={MAX_SINGLE_EXPENSE_AMOUNT}
                 required
+                disabled={isMonthLocked}
                 value={amount}
                 onKeyDown={blockInvalidAmountKeys}
                 onBlur={() => setTouched((p) => ({ ...p, amount: true }))}
@@ -392,7 +446,7 @@ export default function ExpenseForm({
                   setTouched((p) => ({ ...p, amount: true }));
                 }}
                 placeholder="0.00"
-                className={`w-full bg-zinc-950/90 border rounded-lg pl-7 pr-3 py-2 text-sm font-mono text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-all tabular-nums ${
+                className={`w-full bg-zinc-950/90 border rounded-lg pl-7 pr-3 py-2 text-sm font-mono text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-all tabular-nums disabled:opacity-50 disabled:cursor-not-allowed ${
                   touched.amount && validation.errors.amount
                     ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
                     : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700'
@@ -400,7 +454,6 @@ export default function ExpenseForm({
               />
             </div>
 
-            {/* Inline Error Indicator */}
             {touched.amount && validation.errors.amount && (
               <div className="flex items-center gap-1 text-rose-400 text-xs mt-1 animate-in fade-in">
                 <AlertCircle className="w-3 h-3 shrink-0" />
@@ -409,12 +462,13 @@ export default function ExpenseForm({
             )}
           </div>
 
-          {/* Category Dropdown (Span 2 on Desktop) */}
-          <div className="sm:col-span-2 relative">
+          {/* Category Dropdown */}
+          <div className="sm:col-span-2">
             <select
               value={category}
+              disabled={isMonthLocked}
               onChange={(e) => setCategory(e.target.value as Category)}
-              className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-2.5 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 transition-all cursor-pointer"
+              className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-2.5 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
@@ -424,18 +478,19 @@ export default function ExpenseForm({
             </select>
           </div>
 
-          {/* Date Picker with Future Date Locking (Span 2 on Desktop) */}
-          <div className="sm:col-span-2 relative">
+          {/* Date Picker (Strict max of 2026-11-30) */}
+          <div className={timeActive ? 'sm:col-span-2' : 'sm:col-span-2'}>
             <input
               type="date"
-              max={activeDate}
+              max="2026-11-30"
+              disabled={isMonthLocked}
               value={date}
               onBlur={() => setTouched((p) => ({ ...p, date: true }))}
               onChange={(e) => {
                 setDate(e.target.value);
                 setTouched((p) => ({ ...p, date: true }));
               }}
-              className={`w-full bg-zinc-950/90 border rounded-lg px-2 py-2 text-xs sm:text-sm font-mono text-zinc-300 focus:outline-none transition-all cursor-pointer ${
+              className={`w-full bg-zinc-950/90 border rounded-lg px-2 py-2 text-xs sm:text-sm font-mono text-zinc-300 focus:outline-none transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 touched.date && validation.errors.date
                   ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
                   : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700'
@@ -448,6 +503,20 @@ export default function ExpenseForm({
               </div>
             )}
           </div>
+
+          {/* Timing Input: Only active on November 12 onwards */}
+          {timeActive && (
+            <div className="sm:col-span-1">
+              <input
+                type="time"
+                disabled={isMonthLocked}
+                value={time}
+                title="Time of expense"
+                onChange={(e) => setTime(e.target.value)}
+                className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-1.5 py-2 text-xs font-mono text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+          )}
         </div>
 
         {/* Category Pills & Action Buttons */}
@@ -464,8 +533,9 @@ export default function ExpenseForm({
                 <button
                   key={cat}
                   type="button"
+                  disabled={isMonthLocked}
                   onClick={() => setCategory(cat)}
-                  className={`text-xs px-2.5 py-1 rounded-md transition-all cursor-pointer border ${
+                  className={`text-xs px-2.5 py-1 rounded-md transition-all cursor-pointer border disabled:opacity-40 disabled:cursor-not-allowed ${
                     isSelected
                       ? `${config.color} border-current font-medium shadow-sm`
                       : 'bg-zinc-950/50 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
@@ -477,16 +547,21 @@ export default function ExpenseForm({
             })}
           </div>
 
-          {/* Submit Button (Strictly disabled until validation passes) */}
+          {/* Submit Button */}
           <button
             type="submit"
-            disabled={!validation.isValid}
+            disabled={!validation.isValid || isMonthLocked}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-sm transition-all shadow-sm active:scale-98 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-100"
           >
             {justAdded ? (
               <>
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                 <span className="text-emerald-700 font-semibold">Added!</span>
+              </>
+            ) : isMonthLocked ? (
+              <>
+                <Lock className="w-4 h-4 text-zinc-500" />
+                <span>Locked</span>
               </>
             ) : (
               <>

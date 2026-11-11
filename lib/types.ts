@@ -18,11 +18,13 @@ export interface UserProfile {
 export interface Expense {
   id: string;
   date: string; // ISO format: YYYY-MM-DD
+  time?: string; // HH:MM 24-hr format (e.g. "14:30") - active from Nov 12, 2026 onwards
   description: string;
   category: Category;
   amount: number; // Stored in Philippine Pesos (PHP)
   createdAt: number;
   userId?: string; // Ownership identification
+  order?: number; // Exact sequence index for Nov 11 and before
 }
 
 export interface PresetExpense {

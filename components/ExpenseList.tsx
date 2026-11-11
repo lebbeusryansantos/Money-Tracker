@@ -15,7 +15,13 @@ import {
   MAX_DESCRIPTION_LENGTH,
   MAX_SINGLE_EXPENSE_AMOUNT,
 } from '@/lib/validation';
-import { isRecordEditable, getClientTodayDateISO } from '@/lib/dateUtils';
+import {
+  isRecordEditable,
+  getClientTodayDateISO,
+  isTimeFeatureEnabled,
+  formatTimeDisplay,
+  isDecemberOnwards,
+} from '@/lib/dateUtils';
 import { useAuth, checkExpensePermission } from '@/lib/permissions';
 import {
   Search,
@@ -30,9 +36,8 @@ import {
   ArrowUpDown,
   X,
   AlertTriangle,
-  Check,
   Lock,
-  AlertCircle,
+  Clock,
 } from 'lucide-react';
 
 interface ExpenseListProps {
@@ -54,6 +59,7 @@ export default function ExpenseList({
 }: ExpenseListProps) {
   const { currentUser } = useAuth();
   const todayISO = currentDateISO || getClientTodayDateISO();
+  const isMonthLocked = isDecemberOnwards(selectedMonth);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
@@ -65,10 +71,12 @@ export default function ExpenseList({
   const [editAmount, setEditAmount] = useState('');
   const [editCategory, setEditCategory] = useState<Category>('Food');
   const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
   const [editErrors, setEditErrors] = useState<{
     description?: string;
     amount?: string;
     date?: string;
+    time?: string;
   }>({});
 
   // Delete Confirmation State
@@ -128,7 +136,7 @@ export default function ExpenseList({
     });
   }, [expenses, selectedMonth, selectedCategory, searchQuery, sortBy]);
 
-  // Group by Date
+  // Group by Date with Strict Order for Nov 11 & Before
   const groupedByDate = useMemo(() => {
     const groups: { date: string; items: Expense[]; subtotal: number }[] = [];
     const map = new Map<string, Expense[]>();
@@ -141,6 +149,17 @@ export default function ExpenseList({
     }
 
     map.forEach((items, date) => {
+      // For November 11, 2026 and before: follow exact specified sheet order (ignore time)
+      if (date <= '2026-11-11') {
+        items.sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
+      } else {
+        // November 12 onwards: sort by time / createdAt
+        items.sort((a, b) => {
+          if (a.time && b.time) return a.time.localeCompare(b.time);
+          return a.createdAt - b.createdAt;
+        });
+      }
+
       const subtotal = roundCurrency(
         items.reduce((sum, item) => sum + item.amount, 0)
       );
@@ -183,6 +202,11 @@ export default function ExpenseList({
 
   // Start Inline Editing
   const handleStartInlineEdit = (item: Expense) => {
+    if (isDecemberOnwards(item.date) || isMonthLocked) {
+      if (onToast) onToast('December 2026 onwards is strictly locked. Editing disabled.');
+      return;
+    }
+
     const perm = checkExpensePermission(currentUser, item, 'edit');
     if (!perm.allowed) {
       if (onToast) onToast(perm.reason || 'Permission denied.');
@@ -194,6 +218,13 @@ export default function ExpenseList({
     setEditAmount(item.amount.toString());
     setEditCategory(item.category);
     setEditDate(item.date);
+    // Preserve existing time or format from timestamp
+    setEditTime(
+      item.time ||
+        (item.createdAt
+          ? new Date(item.createdAt).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })
+          : '12:00')
+    );
     setEditErrors({});
   };
 
@@ -203,12 +234,15 @@ export default function ExpenseList({
   };
 
   const handleSaveInlineEdit = (originalItem: Expense) => {
+    const timeActive = isTimeFeatureEnabled(editDate);
+
     const validation = validateExpenseForm(
       {
         description: editDesc,
         amount: editAmount,
         category: editCategory,
         date: editDate,
+        time: timeActive ? editTime : undefined,
       },
       todayISO
     );
@@ -218,16 +252,20 @@ export default function ExpenseList({
         description: validation.errors.description,
         amount: validation.errors.amount,
         date: validation.errors.date,
+        time: validation.errors.time,
       });
       return;
     }
 
+    // Time doesn't change once edited EXCEPT when user manually edits it
     onUpdateExpense({
       ...originalItem,
       description: validation.sanitizedDescription,
       amount: validation.parsedAmount,
       category: editCategory,
       date: editDate,
+      time: timeActive ? (editTime || originalItem.time) : undefined,
+      createdAt: originalItem.createdAt, // Preserved untouched
     });
 
     setEditingId(null);
@@ -237,6 +275,11 @@ export default function ExpenseList({
 
   // Prompt Delete
   const handlePromptDelete = (item: Expense) => {
+    if (isDecemberOnwards(item.date) || isMonthLocked) {
+      if (onToast) onToast('December 2026 onwards is strictly locked. Deletion disabled.');
+      return;
+    }
+
     const perm = checkExpensePermission(currentUser, item, 'delete');
     if (!perm.allowed) {
       if (onToast) onToast(perm.reason || 'Permission denied.');
@@ -254,6 +297,16 @@ export default function ExpenseList({
 
   return (
     <section className="space-y-4">
+      {/* December 2026 Onwards Strict Lock Banner */}
+      {isMonthLocked && (
+        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2.5 text-xs text-amber-300">
+          <Lock className="w-4 h-4 shrink-0 text-amber-400" />
+          <span className="font-medium">
+            December 2026 onwards is strictly locked. You are not allowed to type anything or access any action buttons in this period.
+          </span>
+        </div>
+      )}
+
       {/* Search & Filter Header Bar */}
       <div className="rounded-xl bg-zinc-900/60 border border-zinc-800/80 p-3.5 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
@@ -338,7 +391,7 @@ export default function ExpenseList({
         </div>
       </div>
 
-      {/* Itemized Ledger with Inline Row Editing */}
+      {/* Itemized Ledger with Exact Sheet Order & Conditional Time */}
       {filteredExpenses.length === 0 ? (
         <div className="rounded-xl bg-zinc-900/30 border border-zinc-800/60 p-10 text-center space-y-2">
           <div className="w-10 h-10 rounded-full bg-zinc-800/60 text-zinc-500 mx-auto flex items-center justify-center">
@@ -348,7 +401,7 @@ export default function ExpenseList({
           <p className="text-xs text-zinc-500 max-w-sm mx-auto">
             {searchQuery || selectedCategory !== 'All'
               ? 'Try adjusting your search query or category filter.'
-              : 'No expenses logged for this period yet. Use the quick-add bar above to log an entry.'}
+              : 'No expenses logged for this period yet.'}
           </p>
           {(searchQuery || selectedCategory !== 'All') && (
             <button
@@ -366,7 +419,8 @@ export default function ExpenseList({
         <div className="space-y-4">
           {groupedByDate.map((group) => {
             const { label, subLabel } = formatRelativeDate(group.date);
-            const isGroupLocked = !isRecordEditable(group.date, todayISO);
+            const isGroupLocked = isDecemberOnwards(group.date) || !isRecordEditable(group.date, todayISO);
+            const timeFeatureActive = isTimeFeatureEnabled(group.date);
 
             return (
               <div key={group.date} className="space-y-1.5">
@@ -398,7 +452,7 @@ export default function ExpenseList({
                     const isEditing = editingId === item.id;
                     const permEdit = checkExpensePermission(currentUser, item, 'edit');
                     const permDelete = checkExpensePermission(currentUser, item, 'delete');
-                    const isReadOnly = !permEdit.allowed && !permDelete.allowed;
+                    const isReadOnly = isGroupLocked || isMonthLocked || (!permEdit.allowed && !permDelete.allowed);
 
                     // Inline Row Edit State
                     if (isEditing) {
@@ -409,12 +463,14 @@ export default function ExpenseList({
                         >
                           <div className="text-[11px] font-semibold text-zinc-400 flex items-center justify-between">
                             <span>Inline Editing Entry</span>
-                            <span className="text-[10px] text-zinc-500 font-mono">Press Enter to save, Esc to cancel</span>
+                            <span className="text-[10px] text-zinc-500 font-mono">
+                              Press Enter to save, Esc to cancel
+                            </span>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
                             {/* Edit Description */}
-                            <div className="sm:col-span-5">
+                            <div className="sm:col-span-4">
                               <input
                                 type="text"
                                 maxLength={MAX_DESCRIPTION_LENGTH}
@@ -472,10 +528,10 @@ export default function ExpenseList({
                             </div>
 
                             {/* Edit Date */}
-                            <div className="sm:col-span-2">
+                            <div className={timeFeatureActive ? 'sm:col-span-2' : 'sm:col-span-3'}>
                               <input
                                 type="date"
-                                max={todayISO}
+                                max={todayISO < '2026-11-30' ? todayISO : '2026-11-30'}
                                 value={editDate}
                                 onChange={(e) => setEditDate(e.target.value)}
                                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-1.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
@@ -486,6 +542,24 @@ export default function ExpenseList({
                                 </span>
                               )}
                             </div>
+
+                            {/* Edit Time (Only active and editable on Nov 12 onwards) */}
+                            {timeFeatureActive && (
+                              <div className="sm:col-span-1">
+                                <input
+                                  type="time"
+                                  value={editTime}
+                                  title="Edit time"
+                                  onChange={(e) => setEditTime(e.target.value)}
+                                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-1 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
+                                />
+                                {editErrors.time && (
+                                  <span className="text-[10px] text-rose-400 block mt-0.5">
+                                    {editErrors.time}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           {/* Action Buttons for Inline Edit */}
@@ -535,13 +609,18 @@ export default function ExpenseList({
                               <span className={`text-[11px] font-medium ${catConfig.textColor}`}>
                                 {item.category}
                               </span>
-                              <span>·</span>
-                              <span className="font-mono text-[11px] text-zinc-500">
-                                {new Date(item.createdAt).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
+
+                              {/* Timing feature: ONLY rendered on November 12 onwards! Ignored on Nov 11 & before */}
+                              {timeFeatureActive && (
+                                <>
+                                  <span>·</span>
+                                  <span className="font-mono text-[11px] text-zinc-400 flex items-center gap-0.5">
+                                    <Clock className="w-2.5 h-2.5 inline text-zinc-500" />
+                                    <span>{formatTimeDisplay(item.time, item.createdAt)}</span>
+                                  </span>
+                                </>
+                              )}
+
                               {item.userId === 'usr-admin-1' && (
                                 <>
                                   <span>·</span>
@@ -558,37 +637,45 @@ export default function ExpenseList({
                             {formatCurrency(item.amount)}
                           </div>
 
-                          {/* Action Buttons */}
-                          <div className="flex items-center gap-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                            {permEdit.allowed ? (
-                              <button
-                                onClick={() => handleStartInlineEdit(item)}
-                                aria-label="Edit expense inline"
-                                title="Edit expense"
-                                className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                            ) : (
-                              <span
-                                title={permEdit.reason || 'Locked'}
-                                className="p-1.5 text-zinc-600 cursor-not-allowed"
-                              >
-                                <Lock className="w-3.5 h-3.5" />
-                              </span>
-                            )}
+                          {/* Action Buttons: Disabled & Locked on December 2026 onwards */}
+                          {!isMonthLocked && (
+                            <div className="flex items-center gap-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                              {permEdit.allowed && !isGroupLocked ? (
+                                <button
+                                  onClick={() => handleStartInlineEdit(item)}
+                                  aria-label="Edit expense inline"
+                                  title="Edit expense"
+                                  className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <span
+                                  title={permEdit.reason || 'Locked period'}
+                                  className="p-1.5 text-zinc-600 cursor-not-allowed"
+                                >
+                                  <Lock className="w-3.5 h-3.5" />
+                                </span>
+                              )}
 
-                            {permDelete.allowed ? (
-                              <button
-                                onClick={() => handlePromptDelete(item)}
-                                aria-label="Delete expense"
-                                title="Delete expense"
-                                className="p-1.5 rounded-md hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            ) : null}
-                          </div>
+                              {permDelete.allowed && !isGroupLocked ? (
+                                <button
+                                  onClick={() => handlePromptDelete(item)}
+                                  aria-label="Delete expense"
+                                  title="Delete expense"
+                                  className="p-1.5 rounded-md hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : null}
+                            </div>
+                          )}
+
+                          {isMonthLocked && (
+                            <span title="December 2026 onwards locked" className="text-zinc-600 p-1">
+                              <Lock className="w-3.5 h-3.5" />
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -600,7 +687,7 @@ export default function ExpenseList({
         </div>
       )}
 
-      {/* Accessible Custom Delete Confirmation Modal (Replaces raw window.confirm) */}
+      {/* Accessible Custom Delete Confirmation Modal */}
       {expenseToDelete && (
         <div
           role="dialog"
