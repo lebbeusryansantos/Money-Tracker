@@ -125,9 +125,26 @@ export default function ExpenseList({
       return true;
     }).sort((a, b) => {
       if (sortBy === 'date-desc') {
-        return b.date.localeCompare(a.date) || b.createdAt - a.createdAt;
+        const dateDiff = b.date.localeCompare(a.date);
+        if (dateDiff !== 0) return dateDiff;
+        // Within same date: latest must be on top for all days
+        if (a.order !== undefined && b.order !== undefined) {
+          return b.order - a.order;
+        }
+        if (a.time && b.time && a.time !== b.time) {
+          return b.time.localeCompare(a.time);
+        }
+        return b.createdAt - a.createdAt;
       } else if (sortBy === 'date-asc') {
-        return a.date.localeCompare(b.date) || a.createdAt - b.createdAt;
+        const dateDiff = a.date.localeCompare(b.date);
+        if (dateDiff !== 0) return dateDiff;
+        if (a.order !== undefined && b.order !== undefined) {
+          return a.order - b.order;
+        }
+        if (a.time && b.time && a.time !== b.time) {
+          return a.time.localeCompare(b.time);
+        }
+        return a.createdAt - b.createdAt;
       } else if (sortBy === 'amount-desc') {
         return b.amount - a.amount;
       } else {
@@ -136,7 +153,7 @@ export default function ExpenseList({
     });
   }, [expenses, selectedMonth, selectedCategory, searchQuery, sortBy]);
 
-  // Group by Date with Strict Order for Nov 11 & Before
+  // Group by Date: THE LATEST MUST BE ON TOP for all days
   const groupedByDate = useMemo(() => {
     const groups: { date: string; items: Expense[]; subtotal: number }[] = [];
     const map = new Map<string, Expense[]>();
@@ -149,15 +166,42 @@ export default function ExpenseList({
     }
 
     map.forEach((items, date) => {
-      // For November 11, 2026 and before: follow exact specified sheet order (ignore time)
-      if (date <= '2026-11-11') {
-        items.sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
+      if (sortBy === 'amount-desc') {
+        items.sort((a, b) => b.amount - a.amount);
+      } else if (sortBy === 'amount-asc') {
+        items.sort((a, b) => a.amount - b.amount);
+      } else if (sortBy === 'date-asc') {
+        // Date ascending: oldest on top within day
+        if (date <= '2026-11-11') {
+          items.sort((a, b) => {
+            if (a.order !== undefined && b.order !== undefined) {
+              return a.order - b.order;
+            }
+            return a.createdAt - b.createdAt;
+          });
+        } else {
+          items.sort((a, b) => {
+            if (a.time && b.time && a.time !== b.time) return a.time.localeCompare(b.time);
+            return a.createdAt - b.createdAt;
+          });
+        }
       } else {
-        // November 12 onwards: sort by time / createdAt
-        items.sort((a, b) => {
-          if (a.time && b.time) return a.time.localeCompare(b.time);
-          return a.createdAt - b.createdAt;
-        });
+        // Default (date-desc): THE LATEST MUST BE ON TOP for all days
+        if (date <= '2026-11-11') {
+          // Latest logged entry on top (e.g. order 20 Tricycle > order 19 Grab > order 18 Lunch)
+          items.sort((a, b) => {
+            if (a.order !== undefined && b.order !== undefined) {
+              return b.order - a.order;
+            }
+            return b.createdAt - a.createdAt;
+          });
+        } else {
+          // November 12 onwards: latest time on top, fallback to createdAt descending
+          items.sort((a, b) => {
+            if (a.time && b.time && a.time !== b.time) return b.time.localeCompare(a.time);
+            return b.createdAt - a.createdAt;
+          });
+        }
       }
 
       const subtotal = roundCurrency(
