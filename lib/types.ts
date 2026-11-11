@@ -6,6 +6,15 @@ export type Category =
   | 'Utilities'
   | 'Other';
 
+export type Role = 'admin' | 'user' | 'guest';
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
 export interface Expense {
   id: string;
   date: string; // ISO format: YYYY-MM-DD
@@ -13,6 +22,7 @@ export interface Expense {
   category: Category;
   amount: number; // Stored in Philippine Pesos (PHP)
   createdAt: number;
+  userId?: string; // Ownership identification
 }
 
 export interface PresetExpense {
@@ -53,5 +63,6 @@ export interface MonthSummary {
   weeklySubtotals: WeeklySubtotal[];
   categoryBreakdown: CategorySummary[];
   expenseCount: number;
+  isLocked?: boolean;
+  isFuture?: boolean;
 }
-

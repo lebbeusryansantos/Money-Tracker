@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Expense, Category } from '@/lib/types';
 import {
   CATEGORIES,
@@ -10,11 +10,17 @@ import {
   roundCurrency,
 } from '@/lib/utils';
 import {
+  validateExpenseForm,
+  blockInvalidAmountKeys,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_SINGLE_EXPENSE_AMOUNT,
+} from '@/lib/validation';
+import { isRecordEditable, getClientTodayDateISO } from '@/lib/dateUtils';
+import { useAuth, checkExpensePermission } from '@/lib/permissions';
+import {
   Search,
-  Filter,
   Trash2,
   Edit3,
-  Calendar,
   UtensilsCrossed,
   Car,
   ShoppingBag,
@@ -25,6 +31,8 @@ import {
   X,
   AlertTriangle,
   Check,
+  Lock,
+  AlertCircle,
 } from 'lucide-react';
 
 interface ExpenseListProps {
@@ -32,6 +40,8 @@ interface ExpenseListProps {
   onUpdateExpense: (updated: Expense) => void;
   onDeleteExpense: (id: string) => void;
   selectedMonth: string;
+  onToast?: (msg: string) => void;
+  currentDateISO?: string;
 }
 
 export default function ExpenseList({
@@ -39,20 +49,46 @@ export default function ExpenseList({
   onUpdateExpense,
   onDeleteExpense,
   selectedMonth,
+  onToast,
+  currentDateISO,
 }: ExpenseListProps) {
+  const { currentUser } = useAuth();
+  const todayISO = currentDateISO || getClientTodayDateISO();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
 
-  // Edit State
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  // Inline Row Edit State
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState('');
   const [editAmount, setEditAmount] = useState('');
   const [editCategory, setEditCategory] = useState<Category>('Food');
   const [editDate, setEditDate] = useState('');
+  const [editErrors, setEditErrors] = useState<{
+    description?: string;
+    amount?: string;
+    date?: string;
+  }>({});
 
   // Delete Confirmation State
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+
+  // Keyboard shortcut listener to cancel inline edit on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (editingId) {
+          setEditingId(null);
+          setEditErrors({});
+        } else if (expenseToDelete) {
+          setExpenseToDelete(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editingId, expenseToDelete]);
 
   // Filter & Sort Logic
   const filteredExpenses = useMemo(() => {
@@ -111,7 +147,6 @@ export default function ExpenseList({
       groups.push({ date, items, subtotal });
     });
 
-    // Sort date groups descending or ascending based on sortBy
     if (sortBy === 'date-asc') {
       groups.sort((a, b) => a.date.localeCompare(b.date));
     } else {
@@ -146,33 +181,70 @@ export default function ExpenseList({
     }
   };
 
-  // Start Edit
-  const handleStartEdit = (item: Expense) => {
-    setEditingExpense(item);
+  // Start Inline Editing
+  const handleStartInlineEdit = (item: Expense) => {
+    const perm = checkExpensePermission(currentUser, item, 'edit');
+    if (!perm.allowed) {
+      if (onToast) onToast(perm.reason || 'Permission denied.');
+      return;
+    }
+
+    setEditingId(item.id);
     setEditDesc(item.description);
     setEditAmount(item.amount.toString());
     setEditCategory(item.category);
     setEditDate(item.date);
+    setEditErrors({});
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingExpense) return;
-    const parsedAmount = parseFloat(editAmount);
-    if (!editDesc.trim() || isNaN(parsedAmount) || parsedAmount <= 0) return;
+  const handleCancelInlineEdit = () => {
+    setEditingId(null);
+    setEditErrors({});
+  };
+
+  const handleSaveInlineEdit = (originalItem: Expense) => {
+    const validation = validateExpenseForm(
+      {
+        description: editDesc,
+        amount: editAmount,
+        category: editCategory,
+        date: editDate,
+      },
+      todayISO
+    );
+
+    if (!validation.isValid) {
+      setEditErrors({
+        description: validation.errors.description,
+        amount: validation.errors.amount,
+        date: validation.errors.date,
+      });
+      return;
+    }
 
     onUpdateExpense({
-      ...editingExpense,
-      description: editDesc.trim(),
-      amount: roundCurrency(parsedAmount),
+      ...originalItem,
+      description: validation.sanitizedDescription,
+      amount: validation.parsedAmount,
       category: editCategory,
       date: editDate,
     });
 
-    setEditingExpense(null);
+    setEditingId(null);
+    setEditErrors({});
+    if (onToast) onToast(`Changes saved (${formatCurrency(validation.parsedAmount)})`);
   };
 
-  // Confirm Delete
+  // Prompt Delete
+  const handlePromptDelete = (item: Expense) => {
+    const perm = checkExpensePermission(currentUser, item, 'delete');
+    if (!perm.allowed) {
+      if (onToast) onToast(perm.reason || 'Permission denied.');
+      return;
+    }
+    setExpenseToDelete(item);
+  };
+
   const handleConfirmDelete = () => {
     if (expenseToDelete) {
       onDeleteExpense(expenseToDelete.id);
@@ -192,13 +264,13 @@ export default function ExpenseList({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search expenses (e.g. Chagee, Sisig, Grab, 40)..."
+              placeholder="Search expenses (e.g. Chagee, Tricycle, Grab)..."
               className="w-full bg-zinc-950/80 border border-zinc-800 rounded-lg pl-9 pr-8 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -266,7 +338,7 @@ export default function ExpenseList({
         </div>
       </div>
 
-      {/* Itemized Ledger */}
+      {/* Itemized Ledger with Inline Row Editing */}
       {filteredExpenses.length === 0 ? (
         <div className="rounded-xl bg-zinc-900/30 border border-zinc-800/60 p-10 text-center space-y-2">
           <div className="w-10 h-10 rounded-full bg-zinc-800/60 text-zinc-500 mx-auto flex items-center justify-center">
@@ -276,7 +348,7 @@ export default function ExpenseList({
           <p className="text-xs text-zinc-500 max-w-sm mx-auto">
             {searchQuery || selectedCategory !== 'All'
               ? 'Try adjusting your search query or category filter.'
-              : 'No expenses logged for this month yet. Use the quick-add bar above to log your first transaction.'}
+              : 'No expenses logged for this period yet. Use the quick-add bar above to log an entry.'}
           </p>
           {(searchQuery || selectedCategory !== 'All') && (
             <button
@@ -284,7 +356,7 @@ export default function ExpenseList({
                 setSearchQuery('');
                 setSelectedCategory('All');
               }}
-              className="mt-2 text-xs px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+              className="mt-2 text-xs px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors cursor-pointer"
             >
               Clear filters
             </button>
@@ -294,6 +366,8 @@ export default function ExpenseList({
         <div className="space-y-4">
           {groupedByDate.map((group) => {
             const { label, subLabel } = formatRelativeDate(group.date);
+            const isGroupLocked = !isRecordEditable(group.date, todayISO);
+
             return (
               <div key={group.date} className="space-y-1.5">
                 {/* Date Group Header */}
@@ -305,6 +379,12 @@ export default function ExpenseList({
                     <span className="text-[11px] text-zinc-500 font-mono">
                       {subLabel}
                     </span>
+                    {isGroupLocked && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>Locked Period</span>
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs font-mono font-medium text-zinc-400 tabular-nums">
                     Daily Total: <span className="text-zinc-200 font-semibold">{formatCurrency(group.subtotal)}</span>
@@ -315,6 +395,121 @@ export default function ExpenseList({
                 <div className="rounded-xl bg-zinc-900/60 border border-zinc-800/80 divide-y divide-zinc-800/60 overflow-hidden shadow-sm">
                   {group.items.map((item) => {
                     const catConfig = CATEGORY_CONFIG[item.category];
+                    const isEditing = editingId === item.id;
+                    const permEdit = checkExpensePermission(currentUser, item, 'edit');
+                    const permDelete = checkExpensePermission(currentUser, item, 'delete');
+                    const isReadOnly = !permEdit.allowed && !permDelete.allowed;
+
+                    // Inline Row Edit State
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={item.id}
+                          className="p-3 sm:px-4 bg-zinc-900/90 border-l-2 border-emerald-500 space-y-2 animate-in fade-in"
+                        >
+                          <div className="text-[11px] font-semibold text-zinc-400 flex items-center justify-between">
+                            <span>Inline Editing Entry</span>
+                            <span className="text-[10px] text-zinc-500 font-mono">Press Enter to save, Esc to cancel</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
+                            {/* Edit Description */}
+                            <div className="sm:col-span-5">
+                              <input
+                                type="text"
+                                maxLength={MAX_DESCRIPTION_LENGTH}
+                                value={editDesc}
+                                onChange={(e) => setEditDesc(e.target.value)}
+                                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-zinc-500"
+                                placeholder="Description (min 3 chars)"
+                                autoFocus
+                              />
+                              {editErrors.description && (
+                                <span className="text-[10px] text-rose-400 block mt-0.5">
+                                  {editErrors.description}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Edit Amount */}
+                            <div className="sm:col-span-3">
+                              <div className="relative">
+                                <span className="absolute left-2 top-1.5 text-zinc-500 font-mono text-xs">
+                                  ₱
+                                </span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0.01"
+                                  max={MAX_SINGLE_EXPENSE_AMOUNT}
+                                  value={editAmount}
+                                  onKeyDown={blockInvalidAmountKeys}
+                                  onChange={(e) => setEditAmount(e.target.value)}
+                                  className="w-full bg-zinc-950 border border-zinc-700 rounded pl-6 pr-2 py-1.5 text-xs font-mono text-zinc-100 focus:outline-none focus:border-zinc-500"
+                                  placeholder="0.00"
+                                />
+                              </div>
+                              {editErrors.amount && (
+                                <span className="text-[10px] text-rose-400 block mt-0.5">
+                                  {editErrors.amount}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Edit Category */}
+                            <div className="sm:col-span-2">
+                              <select
+                                value={editCategory}
+                                onChange={(e) => setEditCategory(e.target.value as Category)}
+                                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
+                              >
+                                {CATEGORIES.map((c) => (
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Edit Date */}
+                            <div className="sm:col-span-2">
+                              <input
+                                type="date"
+                                max={todayISO}
+                                value={editDate}
+                                onChange={(e) => setEditDate(e.target.value)}
+                                className="w-full bg-zinc-950 border border-zinc-700 rounded px-1.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
+                              />
+                              {editErrors.date && (
+                                <span className="text-[10px] text-rose-400 block mt-0.5">
+                                  {editErrors.date}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons for Inline Edit */}
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-zinc-800/60">
+                            <button
+                              type="button"
+                              onClick={handleCancelInlineEdit}
+                              className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors cursor-pointer"
+                            >
+                              Cancel (Esc)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveInlineEdit(item)}
+                              className="px-3 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-medium text-xs transition-colors cursor-pointer"
+                            >
+                              Save Changes
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Standard Display Row
                     return (
                       <div
                         key={item.id}
@@ -328,8 +523,13 @@ export default function ExpenseList({
                             {getCategoryIcon(item.category)}
                           </div>
                           <div className="min-w-0">
-                            <div className="text-sm font-medium text-zinc-100 truncate group-hover:text-white">
-                              {item.description}
+                            <div className="text-sm font-medium text-zinc-100 truncate group-hover:text-white flex items-center gap-1.5">
+                              <span>{item.description}</span>
+                              {isReadOnly && (
+                                <span title="Read-only record" className="text-zinc-500">
+                                  <Lock className="w-3 h-3 inline" />
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-zinc-500">
                               <span className={`text-[11px] font-medium ${catConfig.textColor}`}>
@@ -342,6 +542,12 @@ export default function ExpenseList({
                                   minute: '2-digit',
                                 })}
                               </span>
+                              {item.userId === 'usr-admin-1' && (
+                                <>
+                                  <span>·</span>
+                                  <span className="text-[10px] text-zinc-600 font-mono">System Seed</span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -354,20 +560,34 @@ export default function ExpenseList({
 
                           {/* Action Buttons */}
                           <div className="flex items-center gap-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleStartEdit(item)}
-                              aria-label="Edit expense"
-                              className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setExpenseToDelete(item)}
-                              aria-label="Delete expense"
-                              className="p-1.5 rounded-md hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {permEdit.allowed ? (
+                              <button
+                                onClick={() => handleStartInlineEdit(item)}
+                                aria-label="Edit expense inline"
+                                title="Edit expense"
+                                className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <span
+                                title={permEdit.reason || 'Locked'}
+                                className="p-1.5 text-zinc-600 cursor-not-allowed"
+                              >
+                                <Lock className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+
+                            {permDelete.allowed ? (
+                              <button
+                                onClick={() => handlePromptDelete(item)}
+                                aria-label="Delete expense"
+                                title="Delete expense"
+                                className="p-1.5 rounded-md hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -380,113 +600,25 @@ export default function ExpenseList({
         </div>
       )}
 
-      {/* Edit Modal / Drawer */}
-      {editingExpense && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-xl bg-zinc-900 border border-zinc-800 p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-              <h3 className="text-sm font-semibold text-zinc-100">Edit Expense</h3>
-              <button
-                onClick={() => setEditingExpense(null)}
-                className="text-zinc-500 hover:text-zinc-300"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEdit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">
-                  Description
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editDesc}
-                  onChange={(e) => setEditDesc(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-700"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1">
-                    Amount (₱)
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0.01"
-                    required
-                    value={editAmount}
-                    onChange={(e) => setEditAmount(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm font-mono text-zinc-100 focus:outline-none focus:border-zinc-700"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={editCategory}
-                    onChange={(e) => setEditCategory(e.target.value as Category)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  >
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm font-mono text-zinc-200 focus:outline-none focus:border-zinc-700"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setEditingExpense(null)}
-                  className="px-3.5 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg text-xs font-medium bg-zinc-100 hover:bg-white text-zinc-950 transition-colors shadow-sm"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
+      {/* Accessible Custom Delete Confirmation Modal (Replaces raw window.confirm) */}
       {expenseToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+        >
           <div className="w-full max-w-sm rounded-xl bg-zinc-900 border border-zinc-800 p-5 shadow-2xl space-y-4">
             <div className="w-10 h-10 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
               <AlertTriangle className="w-5 h-5" />
             </div>
 
             <div className="text-center space-y-1">
-              <h3 className="text-sm font-semibold text-zinc-100">Delete Expense?</h3>
+              <h3 id="delete-dialog-title" className="text-sm font-semibold text-zinc-100">
+                Delete Expense?
+              </h3>
               <p className="text-xs text-zinc-400">
-                Are you sure you want to delete{' '}
+                Are you sure you want to permanently delete{' '}
                 <span className="font-semibold text-zinc-200">
                   &ldquo;{expenseToDelete.description}&rdquo;
                 </span>{' '}
@@ -504,14 +636,14 @@ export default function ExpenseList({
                 onClick={() => setExpenseToDelete(null)}
                 className="w-1/2 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
               >
-                Cancel
+                Cancel (Esc)
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDelete}
                 className="w-1/2 py-2 rounded-lg text-xs font-medium bg-rose-500 hover:bg-rose-600 text-white transition-colors shadow-sm cursor-pointer"
               >
-                Delete
+                Delete Record
               </button>
             </div>
           </div>
@@ -520,4 +652,3 @@ export default function ExpenseList({
     </section>
   );
 }
-

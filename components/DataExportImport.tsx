@@ -7,9 +7,9 @@ import {
   exportToJSON,
   parseCSV,
   parseJSON,
-  INITIAL_MOCK_DATA,
   formatCurrency,
 } from '@/lib/utils';
+import { useAuth } from '@/lib/permissions';
 import {
   Download,
   Upload,
@@ -17,9 +17,10 @@ import {
   Trash2,
   FileSpreadsheet,
   FileCode,
-  Check,
   AlertCircle,
   X,
+  AlertTriangle,
+  Lock,
 } from 'lucide-react';
 
 interface DataExportImportProps {
@@ -37,7 +38,7 @@ export default function DataExportImport({
   onClearAll,
   onToast,
 }: DataExportImportProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const { canResetData, currentUser } = useAuth();
   const [importPreview, setImportPreview] = useState<{
     items: Expense[];
     fileName: string;
@@ -46,6 +47,7 @@ export default function DataExportImport({
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,7 +87,6 @@ export default function DataExportImport({
     };
 
     reader.readAsText(file);
-    // Reset input so same file can be selected again
     e.target.value = '';
   };
 
@@ -96,7 +97,22 @@ export default function DataExportImport({
       `Successfully ${importMode === 'merge' ? 'merged' : 'imported'} ${importPreview.items.length} expenses!`
     );
     setImportPreview(null);
-    setIsOpen(false);
+  };
+
+  const handlePromptReset = () => {
+    if (!canResetData()) {
+      onToast('Permission Denied: Only Admin role can reset system seed data.');
+      return;
+    }
+    setShowResetConfirm(true);
+  };
+
+  const handlePromptClear = () => {
+    if (!canResetData()) {
+      onToast('Permission Denied: Only Admin role can wipe database.');
+      return;
+    }
+    setShowClearConfirm(true);
   };
 
   return (
@@ -152,10 +168,7 @@ export default function DataExportImport({
 
         {/* Reset to Demo */}
         <button
-          onClick={() => {
-            onResetToDemo();
-            onToast('Reset data to November 2026 sample set');
-          }}
+          onClick={handlePromptReset}
           className="flex items-center justify-center gap-1.5 p-2 rounded-lg bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-800/40 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
         >
           <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
@@ -179,7 +192,7 @@ export default function DataExportImport({
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMessage}</span>
           </div>
-          <button onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-rose-200">
+          <button onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-rose-200 cursor-pointer">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -187,7 +200,11 @@ export default function DataExportImport({
 
       {/* Import Preview Modal */}
       {importPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+        >
           <div className="w-full max-w-md rounded-xl bg-zinc-900 border border-zinc-800 p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
               <div className="flex items-center gap-2">
@@ -196,7 +213,7 @@ export default function DataExportImport({
               </div>
               <button
                 onClick={() => setImportPreview(null)}
-                className="text-zinc-500 hover:text-zinc-300"
+                className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -230,7 +247,7 @@ export default function DataExportImport({
                 <button
                   type="button"
                   onClick={() => setImportMode('merge')}
-                  className={`p-2.5 rounded-lg border text-left text-xs transition-all ${
+                  className={`p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer ${
                     importMode === 'merge'
                       ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
                       : 'bg-zinc-950/60 border-zinc-800 text-zinc-400'
@@ -242,7 +259,7 @@ export default function DataExportImport({
                 <button
                   type="button"
                   onClick={() => setImportMode('replace')}
-                  className={`p-2.5 rounded-lg border text-left text-xs transition-all ${
+                  className={`p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer ${
                     importMode === 'replace'
                       ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
                       : 'bg-zinc-950/60 border-zinc-800 text-zinc-400'
@@ -258,14 +275,14 @@ export default function DataExportImport({
               <button
                 type="button"
                 onClick={() => setImportPreview(null)}
-                className="px-3.5 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                className="px-3.5 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleApplyImport}
-                className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-500 hover:bg-emerald-600 text-white transition-colors shadow-sm"
+                className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition-colors shadow-sm cursor-pointer"
               >
                 Apply Import
               </button>
@@ -274,9 +291,54 @@ export default function DataExportImport({
         </div>
       )}
 
-      {/* Clear All Confirmation Modal */}
+      {/* Accessible Confirmation Dialog for Resetting to Demo */}
+      {showResetConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+        >
+          <div className="w-full max-w-sm rounded-xl bg-zinc-900 border border-zinc-800 p-5 shadow-2xl space-y-4 text-center">
+            <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+              <RotateCcw className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-zinc-100">Reset to November 2026 Sample Data?</h3>
+              <p className="text-xs text-zinc-400">
+                This will restore the 20 official November 2026 transactions from your Google Sheet ledger. Any custom additions will be overwritten.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="w-1/2 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onResetToDemo();
+                  setShowResetConfirm(false);
+                  onToast('Dataset reset to official Google Sheet ledger');
+                }}
+                className="w-1/2 py-2 rounded-lg text-xs font-medium bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold transition-colors shadow-sm cursor-pointer"
+              >
+                Confirm Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Accessible Confirmation Dialog for Clearing All Data */}
       {showClearConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+        >
           <div className="w-full max-w-sm rounded-xl bg-zinc-900 border border-zinc-800 p-5 shadow-2xl space-y-4 text-center">
             <div className="w-10 h-10 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
               <Trash2 className="w-5 h-5" />
@@ -291,7 +353,7 @@ export default function DataExportImport({
               <button
                 type="button"
                 onClick={() => setShowClearConfirm(false)}
-                className="w-1/2 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                className="w-1/2 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -302,7 +364,7 @@ export default function DataExportImport({
                   setShowClearConfirm(false);
                   onToast('All expenses cleared');
                 }}
-                className="w-1/2 py-2 rounded-lg text-xs font-medium bg-rose-500 hover:bg-rose-600 text-white transition-colors shadow-sm"
+                className="w-1/2 py-2 rounded-lg text-xs font-medium bg-rose-500 hover:bg-rose-600 text-white transition-colors shadow-sm cursor-pointer"
               >
                 Confirm Clear
               </button>
@@ -315,7 +377,7 @@ export default function DataExportImport({
       <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
         <span>Stored securely in browser `localStorage`</span>
         <button
-          onClick={() => setShowClearConfirm(true)}
+          onClick={handlePromptClear}
           className="text-zinc-500 hover:text-rose-400 transition-colors underline cursor-pointer"
         >
           Wipe database
@@ -324,4 +386,3 @@ export default function DataExportImport({
     </div>
   );
 }
-

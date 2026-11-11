@@ -1,40 +1,50 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Category, Expense, PresetExpense } from '@/lib/types';
 import {
   CATEGORIES,
   CATEGORY_CONFIG,
   DEFAULT_PRESETS,
-  getTodayDateString,
   roundCurrency,
   formatCurrency,
   PRESETS_STORAGE_KEY,
 } from '@/lib/utils';
 import {
+  validateExpenseForm,
+  blockInvalidAmountKeys,
+  MAX_DESCRIPTION_LENGTH,
+  MIN_DESCRIPTION_LENGTH,
+  MAX_SINGLE_EXPENSE_AMOUNT,
+} from '@/lib/validation';
+import { getClientTodayDateISO, getMillisecondsUntilMidnight } from '@/lib/dateUtils';
+import {
   Plus,
-  Calendar,
-  Tag,
   Zap,
-  CornerDownLeft,
   CheckCircle2,
   SlidersHorizontal,
   X,
+  AlertCircle,
+  Calendar,
 } from 'lucide-react';
 
 interface ExpenseFormProps {
   onAddExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => void;
   onInstantToast?: (message: string) => void;
+  currentDateISO?: string;
 }
 
 export default function ExpenseForm({
   onAddExpense,
   onInstantToast,
+  currentDateISO,
 }: ExpenseFormProps) {
+  // Today's date with real-time midnight rollover sync
+  const [activeDate, setActiveDate] = useState<string>(currentDateISO || '2026-11-11');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<Category>('Food');
-  const [date, setDate] = useState('2026-11-11');
+  const [date, setDate] = useState<string>(currentDateISO || '2026-11-11');
   const [presets, setPresets] = useState<PresetExpense[]>(DEFAULT_PRESETS);
   const [isManagingPresets, setIsManagingPresets] = useState(false);
   const [newPresetLabel, setNewPresetLabel] = useState('');
@@ -42,11 +52,50 @@ export default function ExpenseForm({
   const [newPresetCat, setNewPresetCat] = useState<Category>('Food');
   const [justAdded, setJustAdded] = useState(false);
 
+  // Field touch states for inline error display
+  const [touched, setTouched] = useState<{
+    description: boolean;
+    amount: boolean;
+    date: boolean;
+  }>({
+    description: false,
+    amount: false,
+    date: false,
+  });
+
   const descInputRef = useRef<HTMLInputElement>(null);
 
-  // Load custom presets & update date to client local today
+  // Synchronize client date on mount and schedule automatic midnight rollover
   useEffect(() => {
-    setDate(getTodayDateString());
+    const today = getClientTodayDateISO();
+    setActiveDate(today);
+    setDate((prev) => (prev === '2026-11-11' ? today : prev));
+
+    // Timer to update date automatically when tab is open across midnight
+    let timerId: NodeJS.Timeout;
+    const scheduleMidnightRollover = () => {
+      const ms = getMillisecondsUntilMidnight();
+      timerId = setTimeout(() => {
+        const newToday = getClientTodayDateISO();
+        setActiveDate(newToday);
+        setDate(newToday);
+        scheduleMidnightRollover();
+      }, ms);
+    };
+
+    scheduleMidnightRollover();
+    return () => clearTimeout(timerId);
+  }, []);
+
+  // Update active date if prop changes
+  useEffect(() => {
+    if (currentDateISO) {
+      setActiveDate(currentDateISO);
+    }
+  }, [currentDateISO]);
+
+  // Load custom presets
+  useEffect(() => {
     try {
       const stored = localStorage.getItem(PRESETS_STORAGE_KEY);
       if (stored) {
@@ -68,6 +117,21 @@ export default function ExpenseForm({
       console.error(err);
     }
   };
+
+  // Real-time validation computation
+  const validation = useMemo(() => {
+    return validateExpenseForm(
+      {
+        description,
+        amount,
+        category,
+        date,
+      },
+      activeDate
+    );
+  }, [description, amount, category, date, activeDate]);
+
+  const trimmedDescLen = description.trim().length;
 
   const handleAddPreset = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,41 +162,47 @@ export default function ExpenseForm({
     setIsManagingPresets(false);
   };
 
-  // Submit main form
+  // Submit main form with strict validation
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsedAmount = parseFloat(amount);
-    if (!description.trim() || isNaN(parsedAmount) || parsedAmount <= 0) {
+    setTouched({ description: true, amount: true, date: true });
+
+    if (!validation.isValid) {
       return;
     }
 
     onAddExpense({
-      date: date || getTodayDateString(),
-      description: description.trim(),
+      date: date || activeDate,
+      description: validation.sanitizedDescription,
       category,
-      amount: roundCurrency(parsedAmount),
+      amount: validation.parsedAmount,
     });
+
+    if (onInstantToast) {
+      onInstantToast(`Expense logged (${formatCurrency(validation.parsedAmount)})`);
+    }
 
     setDescription('');
     setAmount('');
+    setTouched({ description: false, amount: false, date: false });
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1200);
 
-    // Keep focus for rapid multi-logging
+    // Keep focus on description input for rapid subsequent entry logging
     descInputRef.current?.focus();
   };
 
   // One-tap quick preset log
   const handlePresetClick = (preset: PresetExpense) => {
     onAddExpense({
-      date: getTodayDateString(),
+      date: activeDate,
       description: preset.description,
       category: preset.category,
       amount: preset.amount,
     });
 
     if (onInstantToast) {
-      onInstantToast(`Logged ${formatCurrency(preset.amount)} for ${preset.description}`);
+      onInstantToast(`Logged ${formatCurrency(preset.amount)} for "${preset.description}"`);
     }
 
     setJustAdded(true);
@@ -160,7 +230,7 @@ export default function ExpenseForm({
           </button>
         </div>
 
-        {/* Preset management popup or drawer */}
+        {/* Preset management drawer */}
         {isManagingPresets && (
           <div className="p-3 mb-3 rounded-lg bg-zinc-950 border border-zinc-800 space-y-3">
             <div className="flex items-center justify-between">
@@ -183,7 +253,7 @@ export default function ExpenseForm({
                   {p.label}
                   <button
                     onClick={() => handleDeletePreset(p.id)}
-                    className="text-zinc-500 hover:text-rose-400 ml-1"
+                    className="text-zinc-500 hover:text-rose-400 ml-1 cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -203,15 +273,17 @@ export default function ExpenseForm({
               <input
                 type="number"
                 step="0.01"
+                min="0.01"
                 placeholder="₱ Amount"
                 value={newPresetAmount}
+                onKeyDown={blockInvalidAmountKeys}
                 onChange={(e) => setNewPresetAmount(e.target.value)}
                 className="text-xs bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-100 w-24 focus:outline-none focus:border-zinc-700 font-mono"
               />
               <select
                 value={newPresetCat}
                 onChange={(e) => setNewPresetCat(e.target.value as Category)}
-                className="text-xs bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-zinc-300 focus:outline-none focus:border-zinc-700"
+                className="text-xs bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-zinc-300 focus:outline-none focus:border-zinc-700 cursor-pointer"
               >
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -221,7 +293,7 @@ export default function ExpenseForm({
               </select>
               <button
                 type="submit"
-                className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded hover:bg-emerald-500/30 font-medium transition-colors"
+                className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded hover:bg-emerald-500/30 font-medium transition-colors cursor-pointer"
               >
                 + Add Preset
               </button>
@@ -253,37 +325,88 @@ export default function ExpenseForm({
         </div>
       </div>
 
-      {/* Main Rapid Input Form */}
+      {/* Main Rapid Input Form with Strict Field Validation */}
       <form onSubmit={handleSubmit} className="space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5 items-start">
           {/* Description (Span 5 on Desktop) */}
           <div className="sm:col-span-5 relative">
-            <input
-              ref={descInputRef}
-              type="text"
-              required
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What did you spend on? (e.g. Lunch Sisig)"
-              className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 transition-all"
-            />
+            <div className="relative">
+              <input
+                ref={descInputRef}
+                type="text"
+                required
+                maxLength={MAX_DESCRIPTION_LENGTH}
+                value={description}
+                onBlur={() => setTouched((p) => ({ ...p, description: true }))}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  setTouched((p) => ({ ...p, description: true }));
+                }}
+                placeholder="What did you spend on? (min 3 chars)"
+                className={`w-full bg-zinc-950/90 border rounded-lg px-3 py-2 pr-14 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-all ${
+                  touched.description && validation.errors.description
+                    ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
+                    : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700'
+                }`}
+              />
+              {/* Unobtrusive Character Counter */}
+              <span
+                className={`absolute right-2.5 top-2.5 text-[10px] font-mono select-none ${
+                  trimmedDescLen > 0 && trimmedDescLen < MIN_DESCRIPTION_LENGTH
+                    ? 'text-rose-400 font-semibold'
+                    : trimmedDescLen >= MAX_DESCRIPTION_LENGTH - 5
+                    ? 'text-amber-400 font-semibold'
+                    : 'text-zinc-500'
+                }`}
+              >
+                {trimmedDescLen}/{MAX_DESCRIPTION_LENGTH}
+              </span>
+            </div>
+
+            {/* Inline Error Indicator */}
+            {touched.description && validation.errors.description && (
+              <div className="flex items-center gap-1 text-rose-400 text-xs mt-1 animate-in fade-in">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>{validation.errors.description}</span>
+              </div>
+            )}
           </div>
 
           {/* Amount (Span 3 on Desktop) */}
           <div className="sm:col-span-3 relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-sm">
-              ₱
-            </span>
-            <input
-              type="number"
-              step="any"
-              min="0.01"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg pl-7 pr-3 py-2 text-sm font-mono text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 transition-all tabular-nums"
-            />
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-sm select-none">
+                ₱
+              </span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                max={MAX_SINGLE_EXPENSE_AMOUNT}
+                required
+                value={amount}
+                onKeyDown={blockInvalidAmountKeys}
+                onBlur={() => setTouched((p) => ({ ...p, amount: true }))}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setTouched((p) => ({ ...p, amount: true }));
+                }}
+                placeholder="0.00"
+                className={`w-full bg-zinc-950/90 border rounded-lg pl-7 pr-3 py-2 text-sm font-mono text-zinc-100 placeholder:text-zinc-500 focus:outline-none transition-all tabular-nums ${
+                  touched.amount && validation.errors.amount
+                    ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
+                    : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700'
+                }`}
+              />
+            </div>
+
+            {/* Inline Error Indicator */}
+            {touched.amount && validation.errors.amount && (
+              <div className="flex items-center gap-1 text-rose-400 text-xs mt-1 animate-in fade-in">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>{validation.errors.amount}</span>
+              </div>
+            )}
           </div>
 
           {/* Category Dropdown (Span 2 on Desktop) */}
@@ -301,14 +424,29 @@ export default function ExpenseForm({
             </select>
           </div>
 
-          {/* Date Picker (Span 2 on Desktop) */}
+          {/* Date Picker with Future Date Locking (Span 2 on Desktop) */}
           <div className="sm:col-span-2 relative">
             <input
               type="date"
+              max={activeDate}
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-2 py-2 text-xs sm:text-sm font-mono text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 transition-all cursor-pointer"
+              onBlur={() => setTouched((p) => ({ ...p, date: true }))}
+              onChange={(e) => {
+                setDate(e.target.value);
+                setTouched((p) => ({ ...p, date: true }));
+              }}
+              className={`w-full bg-zinc-950/90 border rounded-lg px-2 py-2 text-xs sm:text-sm font-mono text-zinc-300 focus:outline-none transition-all cursor-pointer ${
+                touched.date && validation.errors.date
+                  ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
+                  : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700'
+              }`}
             />
+            {touched.date && validation.errors.date && (
+              <div className="flex items-center gap-1 text-rose-400 text-xs mt-1 animate-in fade-in">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>{validation.errors.date}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -339,10 +477,11 @@ export default function ExpenseForm({
             })}
           </div>
 
-          {/* Submit Button */}
+          {/* Submit Button (Strictly disabled until validation passes) */}
           <button
             type="submit"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-sm transition-all shadow-sm active:scale-98 cursor-pointer disabled:opacity-50"
+            disabled={!validation.isValid}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-sm transition-all shadow-sm active:scale-98 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-100"
           >
             {justAdded ? (
               <>

@@ -91,7 +91,12 @@ export default function CategoryBreakdown({
             })}
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="p-4 rounded-lg bg-zinc-950/30 border border-zinc-900/60 text-center space-y-1">
+          <p className="text-xs font-medium text-zinc-400">No category activity</p>
+          <p className="text-[11px] text-zinc-600">Zero expenses recorded for this month.</p>
+        </div>
+      )}
 
       {/* Itemized Categories List */}
       <div className="space-y-2.5">

@@ -87,6 +87,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Transportation',
     amount: 150.0,
     createdAt: 1794412800000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-19',
@@ -95,6 +96,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Transportation',
     amount: 149.0,
     createdAt: 1794409200000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-18',
@@ -103,6 +105,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Food',
     amount: 346.48,
     createdAt: 1794405600000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-17',
@@ -111,6 +114,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Shopping',
     amount: 160.0,
     createdAt: 1794402000000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-16',
@@ -119,6 +123,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Transportation',
     amount: 154.0,
     createdAt: 1794398400000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-15',
@@ -127,6 +132,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Food',
     amount: 40.0,
     createdAt: 1794394800000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-14',
@@ -135,6 +141,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Utilities',
     amount: 80.0,
     createdAt: 1794391200000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-13',
@@ -143,6 +150,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Shopping',
     amount: 112.0,
     createdAt: 1794304800000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-12',
@@ -151,6 +159,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Transportation',
     amount: 40.0,
     createdAt: 1794232800000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-11',
@@ -159,6 +168,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Food',
     amount: 80.0,
     createdAt: 1794229200000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-10',
@@ -167,6 +177,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Food',
     amount: 85.0,
     createdAt: 1794225600000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-09',
@@ -175,6 +186,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Food',
     amount: 85.0,
     createdAt: 1794222000000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-08',
@@ -183,6 +195,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Transportation',
     amount: 60.0,
     createdAt: 1794218400000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-07',
@@ -191,6 +204,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Shopping',
     amount: 354.0,
     createdAt: 1794045600000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-06',
@@ -199,6 +213,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Transportation',
     amount: 40.0,
     createdAt: 1793800800000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-05',
@@ -207,6 +222,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Food',
     amount: 80.0,
     createdAt: 1793797200000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-04',
@@ -215,6 +231,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Transportation',
     amount: 40.0,
     createdAt: 1793793600000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-03',
@@ -223,6 +240,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Food',
     amount: 180.0,
     createdAt: 1793790000000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-02',
@@ -231,6 +249,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Transportation',
     amount: 40.0,
     createdAt: 1793786400000,
+    userId: 'usr-admin-1',
   },
   {
     id: 'sheet-01',
@@ -239,6 +258,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     category: 'Entertainment',
     amount: 219.0,
     createdAt: 1793613600000,
+    userId: 'usr-admin-1',
   },
 ];
 
@@ -502,6 +522,9 @@ export function calculateMonthSummary(expenses: Expense[], monthKey: string): Mo
     };
   }).sort((a, b) => b.total - a.total);
 
+  const isFuture = monthKey > currentMonthKey;
+  const isLocked = isFuture;
+
   return {
     monthKey,
     label: formatMonthKey(monthKey),
@@ -514,6 +537,8 @@ export function calculateMonthSummary(expenses: Expense[], monthKey: string): Mo
     weeklySubtotals,
     categoryBreakdown,
     expenseCount: monthExpenses.length,
+    isLocked,
+    isFuture,
   };
 }
 
