@@ -516,9 +516,10 @@ export default function ExpenseList({
                             </span>
                           </div>
 
+                          {/* Line 1: Edit Description & Edit Amount */}
                           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
                             {/* Edit Description */}
-                            <div className="sm:col-span-4">
+                            <div className="sm:col-span-7">
                               <input
                                 type="text"
                                 maxLength={MAX_DESCRIPTION_LENGTH}
@@ -536,7 +537,7 @@ export default function ExpenseList({
                             </div>
 
                             {/* Edit Amount */}
-                            <div className="sm:col-span-3">
+                            <div className="sm:col-span-5">
                               <div className="relative">
                                 <span className="absolute left-2 top-1.5 text-zinc-500 font-mono text-xs">
                                   ₱
@@ -559,9 +560,12 @@ export default function ExpenseList({
                                 </span>
                               )}
                             </div>
+                          </div>
 
+                          {/* Line 2: Edit Category, Date & Time */}
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
                             {/* Edit Category */}
-                            <div className="sm:col-span-2">
+                            <div className={timeFeatureActive ? 'sm:col-span-4' : 'sm:col-span-6'}>
                               <select
                                 value={editCategory}
                                 onChange={(e) => setEditCategory(e.target.value as Category)}
@@ -576,13 +580,13 @@ export default function ExpenseList({
                             </div>
 
                             {/* Edit Date */}
-                            <div className={timeFeatureActive ? 'sm:col-span-2' : 'sm:col-span-3'}>
+                            <div className={timeFeatureActive ? 'sm:col-span-4' : 'sm:col-span-6'}>
                               <input
                                 type="date"
                                 max={todayISO < '2026-11-30' ? todayISO : '2026-11-30'}
                                 value={editDate}
                                 onChange={(e) => setEditDate(e.target.value)}
-                                className="w-full bg-zinc-950 border border-zinc-700 rounded px-1.5 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
+                                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
                               />
                               {editErrors.date && (
                                 <span className="text-[10px] text-rose-400 block mt-0.5">
@@ -593,13 +597,13 @@ export default function ExpenseList({
 
                             {/* Edit Time (Only active and editable on Nov 12 onwards) */}
                             {timeFeatureActive && (
-                              <div className="sm:col-span-1">
+                              <div className="sm:col-span-4">
                                 <input
                                   type="time"
                                   value={editTime}
                                   title="Edit time"
                                   onChange={(e) => setEditTime(e.target.value)}
-                                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-1 py-1.5 text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
+                                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
                                 />
                                 {editErrors.time && (
                                   <span className="text-[10px] text-rose-400 block mt-0.5">

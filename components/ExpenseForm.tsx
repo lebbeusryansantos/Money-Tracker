@@ -365,9 +365,10 @@ export default function ExpenseForm({
 
       {/* Main Rapid Input Form with Strict Field Validation */}
       <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Line 1: Description & Amount */}
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5 items-start">
           {/* Description */}
-          <div className={timeActive ? 'sm:col-span-4' : 'sm:col-span-5'}>
+          <div className="sm:col-span-7">
             <div className="relative">
               <input
                 ref={descInputRef}
@@ -410,7 +411,7 @@ export default function ExpenseForm({
           </div>
 
           {/* Amount */}
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-5">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-sm select-none">
                 ₱
@@ -445,14 +446,17 @@ export default function ExpenseForm({
               </div>
             )}
           </div>
+        </div>
 
+        {/* Line 2: Category, Date & Time */}
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5 items-start">
           {/* Category Dropdown */}
-          <div className="sm:col-span-2">
+          <div className={timeActive ? 'sm:col-span-4' : 'sm:col-span-6'}>
             <select
               value={category}
               disabled={isMonthLocked}
               onChange={(e) => setCategory(e.target.value as Category)}
-              className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-2.5 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
@@ -463,7 +467,7 @@ export default function ExpenseForm({
           </div>
 
           {/* Date Picker (Strict max of 2026-11-30) */}
-          <div className={timeActive ? 'sm:col-span-2' : 'sm:col-span-2'}>
+          <div className={timeActive ? 'sm:col-span-4' : 'sm:col-span-6'}>
             <input
               type="date"
               max="2026-11-30"
@@ -474,7 +478,7 @@ export default function ExpenseForm({
                 setDate(e.target.value);
                 setTouched((p) => ({ ...p, date: true }));
               }}
-              className={`w-full bg-zinc-950/90 border rounded-lg px-2 py-2 text-xs sm:text-sm font-mono text-zinc-300 focus:outline-none transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`w-full bg-zinc-950/90 border rounded-lg px-3 py-2 text-sm font-mono text-zinc-300 focus:outline-none transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 touched.date && validation.errors.date
                   ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
                   : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700'
@@ -490,14 +494,14 @@ export default function ExpenseForm({
 
           {/* Timing Input: Only active on November 12 onwards */}
           {timeActive && (
-            <div className="sm:col-span-1">
+            <div className="sm:col-span-4">
               <input
                 type="time"
                 disabled={isMonthLocked}
                 value={time}
                 title="Time of expense"
                 onChange={(e) => setTime(e.target.value)}
-                className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-1.5 py-2 text-xs font-mono text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-3 py-2 text-sm font-mono text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           )}
