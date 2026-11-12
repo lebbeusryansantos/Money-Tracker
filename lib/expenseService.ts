@@ -7,14 +7,13 @@ export interface ServiceResult<T> {
 }
 
 /**
- * Fetch all expenses for the authenticated user from Supabase public.expenses
+ * Fetch all expenses from Supabase public.expenses without user_id filter
  */
-export async function fetchUserExpenses(userId: string): Promise<ServiceResult<Expense[]>> {
+export async function fetchCloudExpenses(): Promise<ServiceResult<Expense[]>> {
   try {
     const { data, error } = await supabase
       .from('expenses')
       .select('*')
-      .eq('user_id', userId)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -29,15 +28,17 @@ export async function fetchUserExpenses(userId: string): Promise<ServiceResult<E
   }
 }
 
+// Backward-compatible alias
+export const fetchUserExpenses = fetchCloudExpenses;
+
 /**
- * Insert a single new expense into Supabase
+ * Insert a single new expense into Supabase public.expenses
  */
 export async function createExpenseInCloud(
-  expense: Expense,
-  userId: string
+  expense: Expense
 ): Promise<ServiceResult<Expense>> {
   try {
-    const row = expenseToRow(expense, userId);
+    const row = expenseToRow(expense);
     const { data, error } = await supabase
       .from('expenses')
       .insert(row)
@@ -55,14 +56,13 @@ export async function createExpenseInCloud(
 }
 
 /**
- * Update an existing expense in Supabase (scoped to user_id for IDOR security)
+ * Update an existing expense in Supabase public.expenses
  */
 export async function updateExpenseInCloud(
-  expense: Expense,
-  userId: string
+  expense: Expense
 ): Promise<ServiceResult<Expense>> {
   try {
-    const row = expenseToRow(expense, userId);
+    const row = expenseToRow(expense);
     const { data, error } = await supabase
       .from('expenses')
       .update({
@@ -73,7 +73,6 @@ export async function updateExpenseInCloud(
         created_at: row.created_at,
       })
       .eq('id', expense.id)
-      .eq('user_id', userId)
       .select()
       .single();
 
@@ -88,18 +87,16 @@ export async function updateExpenseInCloud(
 }
 
 /**
- * Delete an expense from Supabase (scoped to user_id)
+ * Delete an expense from Supabase public.expenses by id
  */
 export async function deleteExpenseFromCloud(
-  id: string,
-  userId: string
+  id: string
 ): Promise<ServiceResult<boolean>> {
   try {
     const { error } = await supabase
       .from('expenses')
       .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
+      .eq('id', id);
 
     if (error) {
       return { data: null, error: new Error(error.message) };
@@ -112,18 +109,17 @@ export async function deleteExpenseFromCloud(
 }
 
 /**
- * Bulk insert expenses (for CSV/JSON import or seed restoration)
+ * Bulk insert expenses (for CSV/JSON import or initial mock data seed)
  */
 export async function bulkInsertExpensesInCloud(
-  expenses: Expense[],
-  userId: string
+  expenses: Expense[]
 ): Promise<ServiceResult<Expense[]>> {
   try {
     if (expenses.length === 0) {
       return { data: [], error: null };
     }
 
-    const rows = expenses.map((exp) => expenseToRow(exp, userId));
+    const rows = expenses.map((exp) => expenseToRow(exp));
 
     const { data, error } = await supabase
       .from('expenses')
@@ -142,14 +138,14 @@ export async function bulkInsertExpensesInCloud(
 }
 
 /**
- * Wipe all user expenses from cloud
+ * Wipe all expenses from Supabase public.expenses
  */
-export async function clearAllUserExpensesInCloud(userId: string): Promise<ServiceResult<boolean>> {
+export async function clearAllExpensesInCloud(): Promise<ServiceResult<boolean>> {
   try {
     const { error } = await supabase
       .from('expenses')
       .delete()
-      .eq('user_id', userId);
+      .neq('id', '00000000-0000-0000-0000-000000000000');
 
     if (error) {
       return { data: null, error: new Error(error.message) };
@@ -160,3 +156,6 @@ export async function clearAllUserExpensesInCloud(userId: string): Promise<Servi
     return { data: null, error: err instanceof Error ? err : new Error(String(err)) };
   }
 }
+
+// Backward-compatible alias
+export const clearAllUserExpensesInCloud = clearAllExpensesInCloud;

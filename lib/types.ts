@@ -29,7 +29,7 @@ export interface Expense {
 
 export interface SupabaseExpenseRow {
   id: string;
-  user_id: string;
+  user_id?: string | null;
   date: string;
   description: string;
   category: string;
@@ -71,12 +71,12 @@ export function rowToExpense(row: SupabaseExpenseRow): Expense {
       : 'Other') as Category,
     amount: Number(row.amount),
     createdAt: createdAtMs,
-    userId: row.user_id,
+    userId: row.user_id || undefined,
     time,
   };
 }
 
-export function expenseToRow(expense: Expense, userId: string): SupabaseExpenseRow {
+export function expenseToRow(expense: Expense, userId?: string | null): SupabaseExpenseRow {
   let createdAtIso = new Date(expense.createdAt || Date.now()).toISOString();
   if (expense.time && /^\d{2}:\d{2}$/.test(expense.time)) {
     try {
@@ -89,15 +89,20 @@ export function expenseToRow(expense: Expense, userId: string): SupabaseExpenseR
     }
   }
 
-  return {
+  const row: SupabaseExpenseRow = {
     id: expense.id && expense.id.length === 36 ? expense.id : generateUUID(),
-    user_id: userId,
     date: expense.date,
     description: expense.description.trim(),
     category: expense.category,
     amount: Number(expense.amount),
     created_at: createdAtIso,
   };
+
+  if (userId) {
+    row.user_id = userId;
+  }
+
+  return row;
 }
 
 export interface PresetExpense {
