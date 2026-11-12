@@ -32,7 +32,6 @@ import {
   X,
   AlertCircle,
   Lock,
-  Clock,
 } from 'lucide-react';
 
 interface ExpenseFormProps {
@@ -49,15 +48,28 @@ export default function ExpenseForm({
   selectedMonth = '2026-11',
 }: ExpenseFormProps) {
   const isMonthLocked = isDecemberOnwards(selectedMonth);
+  const activeDate = currentDateISO || '2026-11-12';
 
-  // Today's date with real-time midnight rollover sync
-  const [activeDate, setActiveDate] = useState<string>(currentDateISO || '2026-11-11');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<Category>('Food');
-  const [date, setDate] = useState<string>(currentDateISO || '2026-11-11');
+  const [date, setDate] = useState<string>(currentDateISO || '2026-11-12');
   const [time, setTime] = useState<string>('12:00');
-  const [presets, setPresets] = useState<PresetExpense[]>(DEFAULT_PRESETS);
+  const [presets, setPresets] = useState<PresetExpense[]>(() => {
+    if (typeof window === 'undefined') return DEFAULT_PRESETS;
+    try {
+      const stored = localStorage.getItem(PRESETS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+    return DEFAULT_PRESETS;
+  });
   const [isManagingPresets, setIsManagingPresets] = useState(false);
   const [newPresetLabel, setNewPresetLabel] = useState('');
   const [newPresetAmount, setNewPresetAmount] = useState('');
@@ -82,18 +94,12 @@ export default function ExpenseForm({
 
   // Synchronize client date on mount and schedule automatic midnight rollover
   useEffect(() => {
-    const today = getClientTodayDateISO();
-    setActiveDate(today);
-    setDate((prev) => (prev === '2026-11-11' ? today : prev));
-    setTime(getCurrentTimeHHMM());
-
-    // Timer to update date automatically when tab is open across midnight
+    // Schedule rollover across midnight
     let timerId: NodeJS.Timeout;
     const scheduleMidnightRollover = () => {
       const ms = getMillisecondsUntilMidnight();
       timerId = setTimeout(() => {
         const newToday = getClientTodayDateISO();
-        setActiveDate(newToday);
         setDate(newToday);
         setTime(getCurrentTimeHHMM());
         scheduleMidnightRollover();
@@ -102,28 +108,6 @@ export default function ExpenseForm({
 
     scheduleMidnightRollover();
     return () => clearTimeout(timerId);
-  }, []);
-
-  // Update active date if prop changes
-  useEffect(() => {
-    if (currentDateISO) {
-      setActiveDate(currentDateISO);
-    }
-  }, [currentDateISO]);
-
-  // Load custom presets
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(PRESETS_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setPresets(parsed);
-        }
-      }
-    } catch {
-      // Ignore fallback
-    }
   }, []);
 
   const savePresets = (newPresets: PresetExpense[]) => {

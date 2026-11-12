@@ -1,6 +1,17 @@
-import { createContext, useContext } from 'react';
-import { Expense, UserProfile, Role } from './types';
-import { isRecordEditable } from './dateUtils';
+/**
+ * Re-exporting from real Supabase Auth in lib/auth.tsx
+ * Preserving backwards compatibility for existing imports.
+ */
+export {
+  AuthProvider,
+  useAuth,
+  checkExpensePermission,
+  canResetSystemData,
+} from './auth';
+
+export type { AuthContextType } from './auth';
+
+import { Role, UserProfile } from './types';
 
 export const PRESET_USERS: Record<Role, UserProfile> = {
   admin: {
@@ -25,94 +36,3 @@ export const PRESET_USERS: Record<Role, UserProfile> = {
 
 export const DEFAULT_USER = PRESET_USERS.admin;
 export const SEED_OWNER_ID = PRESET_USERS.admin.id;
-
-/**
- * Authorization Guard: checks whether a user has permission to mutate (edit/delete) an expense.
- * Defends against IDOR by validating user ownership and role.
- */
-export function checkExpensePermission(
-  user: UserProfile,
-  expense: Expense,
-  action: 'edit' | 'delete'
-): { allowed: boolean; reason?: string } {
-  // Date lock check
-  if (!isRecordEditable(expense.date)) {
-    return {
-      allowed: false,
-      reason: 'This transaction falls within a locked or future period and cannot be modified.',
-    };
-  }
-
-  // Admin has global oversight
-  if (user.role === 'admin') {
-    return { allowed: true };
-  }
-
-  // Guest users cannot modify protected/seed expenses
-  if (user.role === 'guest') {
-    if (!expense.userId || expense.userId === SEED_OWNER_ID) {
-      return {
-        allowed: false,
-        reason: 'Guest Mode: Seed and system transactions are read-only. Switch to Admin or User profile to modify.',
-      };
-    }
-    if (expense.userId !== user.id) {
-      return {
-        allowed: false,
-        reason: 'Access Denied: You do not own this transaction.',
-      };
-    }
-    return { allowed: true };
-  }
-
-  // Standard user ownership check (IDOR Prevention)
-  const isOwner = expense.userId === user.id;
-  if (!isOwner) {
-    return {
-      allowed: false,
-      reason: 'Access Denied: You are not authorized to modify another user’s transaction.',
-    };
-  }
-
-  return { allowed: true };
-}
-
-/**
- * Checks whether user has permission to wipe or restore system seed data
- */
-export function canResetSystemData(user: UserProfile): { allowed: boolean; reason?: string } {
-  if (user.role !== 'admin') {
-    return {
-      allowed: false,
-      reason: 'Permission Denied: Only Admin role can reset or wipe the shared database.',
-    };
-  }
-  return { allowed: true };
-}
-
-/**
- * Auth Context
- */
-export interface AuthContextType {
-  currentUser: UserProfile;
-  setCurrentUser: (user: UserProfile) => void;
-  switchRole: (role: Role) => void;
-  isAdmin: boolean;
-  isGuest: boolean;
-  canEditExpense: (expense: Expense) => boolean;
-  canDeleteExpense: (expense: Expense) => boolean;
-  canResetData: () => boolean;
-}
-
-export const AuthContext = createContext<AuthContextType>({
-  currentUser: DEFAULT_USER,
-  setCurrentUser: () => {},
-  switchRole: () => {},
-  isAdmin: true,
-  isGuest: false,
-  canEditExpense: () => true,
-  canDeleteExpense: () => true,
-  canResetData: () => true,
-});
-
-export const useAuth = () => useContext(AuthContext);

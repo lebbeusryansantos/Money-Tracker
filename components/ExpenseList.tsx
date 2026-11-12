@@ -380,7 +380,11 @@ export default function ExpenseList({
               <ArrowUpDown className="w-3.5 h-3.5 text-zinc-500" />
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
+                onChange={(e) =>
+                  setSortBy(
+                    e.target.value as 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'
+                  )
+                }
                 className="bg-transparent text-zinc-200 focus:outline-none cursor-pointer"
               >
                 <option value="date-desc">Newest First</option>

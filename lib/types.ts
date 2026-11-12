@@ -27,6 +27,79 @@ export interface Expense {
   order?: number; // Exact sequence index for Nov 11 and before
 }
 
+export interface SupabaseExpenseRow {
+  id: string;
+  user_id: string;
+  date: string;
+  description: string;
+  category: string;
+  amount: number;
+  created_at: string;
+}
+
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function rowToExpense(row: SupabaseExpenseRow): Expense {
+  const createdAtMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+  let time: string | undefined = undefined;
+  if (row.created_at) {
+    try {
+      const d = new Date(row.created_at);
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      time = `${hours}:${minutes}`;
+    } catch {
+      time = undefined;
+    }
+  }
+
+  return {
+    id: row.id,
+    date: row.date,
+    description: row.description,
+    category: (['Food', 'Transportation', 'Shopping', 'Entertainment', 'Utilities', 'Other'].includes(row.category)
+      ? row.category
+      : 'Other') as Category,
+    amount: Number(row.amount),
+    createdAt: createdAtMs,
+    userId: row.user_id,
+    time,
+  };
+}
+
+export function expenseToRow(expense: Expense, userId: string): SupabaseExpenseRow {
+  let createdAtIso = new Date(expense.createdAt || Date.now()).toISOString();
+  if (expense.time && /^\d{2}:\d{2}$/.test(expense.time)) {
+    try {
+      const combined = new Date(`${expense.date}T${expense.time}:00`);
+      if (!isNaN(combined.getTime())) {
+        createdAtIso = combined.toISOString();
+      }
+    } catch {
+      // Keep createdAtIso
+    }
+  }
+
+  return {
+    id: expense.id && expense.id.length === 36 ? expense.id : generateUUID(),
+    user_id: userId,
+    date: expense.date,
+    description: expense.description.trim(),
+    category: expense.category,
+    amount: Number(expense.amount),
+    created_at: createdAtIso,
+  };
+}
+
 export interface PresetExpense {
   id: string;
   label: string;

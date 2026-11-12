@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { MonthSummary, WeeklySubtotal } from '@/lib/types';
-import { formatCurrency, formatCompactCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import {
   ChevronLeft,
   ChevronRight,

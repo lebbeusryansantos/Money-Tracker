@@ -1,4 +1,12 @@
-import { Category, Expense, PresetExpense, WeeklySubtotal, CategorySummary, MonthSummary } from './types';
+import {
+  Category,
+  Expense,
+  PresetExpense,
+  WeeklySubtotal,
+  CategorySummary,
+  MonthSummary,
+  generateUUID,
+} from './types';
 
 export const CATEGORIES: Category[] = [
   'Food',
@@ -81,7 +89,7 @@ export const DEFAULT_PRESETS: PresetExpense[] = [
 
 export const INITIAL_MOCK_DATA: Expense[] = [
   {
-    id: 'sheet-01',
+    id: '00000000-0000-4000-8000-000000000001',
     date: '2026-11-02',
     description: 'COC Pass',
     category: 'Entertainment',
@@ -91,7 +99,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 1,
   },
   {
-    id: 'sheet-02',
+    id: '00000000-0000-4000-8000-000000000002',
     date: '2026-11-04',
     description: 'Tricycle',
     category: 'Transportation',
@@ -101,7 +109,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 2,
   },
   {
-    id: 'sheet-03',
+    id: '00000000-0000-4000-8000-000000000003',
     date: '2026-11-04',
     description: 'Chagee',
     category: 'Food',
@@ -111,7 +119,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 3,
   },
   {
-    id: 'sheet-04',
+    id: '00000000-0000-4000-8000-000000000004',
     date: '2026-11-04',
     description: 'Tricycle',
     category: 'Transportation',
@@ -121,7 +129,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 4,
   },
   {
-    id: 'sheet-05',
+    id: '00000000-0000-4000-8000-000000000005',
     date: '2026-11-04',
     description: 'Lunch',
     category: 'Food',
@@ -131,7 +139,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 5,
   },
   {
-    id: 'sheet-06',
+    id: '00000000-0000-4000-8000-000000000006',
     date: '2026-11-04',
     description: 'Tricycle',
     category: 'Transportation',
@@ -141,7 +149,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 6,
   },
   {
-    id: 'sheet-07',
+    id: '00000000-0000-4000-8000-000000000007',
     date: '2026-11-07',
     description: 'Photocard (Zel)',
     category: 'Shopping',
@@ -151,7 +159,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 7,
   },
   {
-    id: 'sheet-08',
+    id: '00000000-0000-4000-8000-000000000008',
     date: '2026-11-09',
     description: 'Takoyaki',
     category: 'Transportation',
@@ -161,7 +169,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 8,
   },
   {
-    id: 'sheet-09',
+    id: '00000000-0000-4000-8000-000000000009',
     date: '2026-11-09',
     description: 'Jamaican',
     category: 'Food',
@@ -171,7 +179,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 9,
   },
   {
-    id: 'sheet-10',
+    id: '00000000-0000-4000-8000-000000000010',
     date: '2026-11-09',
     description: 'Mango Juice',
     category: 'Food',
@@ -181,7 +189,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 10,
   },
   {
-    id: 'sheet-11',
+    id: '00000000-0000-4000-8000-000000000011',
     date: '2026-11-09',
     description: 'Lunch',
     category: 'Food',
@@ -191,7 +199,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 11,
   },
   {
-    id: 'sheet-12',
+    id: '00000000-0000-4000-8000-000000000012',
     date: '2026-11-09',
     description: 'Tricycle',
     category: 'Transportation',
@@ -201,7 +209,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 12,
   },
   {
-    id: 'sheet-13',
+    id: '00000000-0000-4000-8000-000000000013',
     date: '2026-11-10',
     description: 'Photocard (Twitzy)',
     category: 'Shopping',
@@ -211,7 +219,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 13,
   },
   {
-    id: 'sheet-14',
+    id: '00000000-0000-4000-8000-000000000014',
     date: '2026-11-11',
     description: 'Grab',
     category: 'Utilities',
@@ -221,7 +229,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 14,
   },
   {
-    id: 'sheet-15',
+    id: '00000000-0000-4000-8000-000000000015',
     date: '2026-11-11',
     description: 'Pancit Canton',
     category: 'Food',
@@ -231,7 +239,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 15,
   },
   {
-    id: 'sheet-16',
+    id: '00000000-0000-4000-8000-000000000016',
     date: '2026-11-11',
     description: 'Grab',
     category: 'Transportation',
@@ -241,7 +249,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 16,
   },
   {
-    id: 'sheet-17',
+    id: '00000000-0000-4000-8000-000000000017',
     date: '2026-11-11',
     description: 'Photocard (Yuna)',
     category: 'Shopping',
@@ -251,7 +259,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 17,
   },
   {
-    id: 'sheet-18',
+    id: '00000000-0000-4000-8000-000000000018',
     date: '2026-11-11',
     description: 'Lunch',
     category: 'Food',
@@ -261,7 +269,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 18,
   },
   {
-    id: 'sheet-19',
+    id: '00000000-0000-4000-8000-000000000019',
     date: '2026-11-11',
     description: 'Grab',
     category: 'Transportation',
@@ -271,7 +279,7 @@ export const INITIAL_MOCK_DATA: Expense[] = [
     order: 19,
   },
   {
-    id: 'sheet-20',
+    id: '00000000-0000-4000-8000-000000000020',
     date: '2026-11-11',
     description: 'Tricycle',
     category: 'Transportation',
@@ -631,7 +639,7 @@ export function parseCSV(csvText: string): Expense[] {
     const tokens: string[] = [];
     let match;
     while ((match = regex.exec(line)) !== null) {
-      let val = match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2];
+      const val = match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2];
       tokens.push(val.trim());
     }
 
@@ -655,7 +663,7 @@ export function parseCSV(csvText: string): Expense[] {
       }
 
       results.push({
-        id: `imp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: generateUUID(),
         date,
         description: description || 'Imported Expense',
         category,
@@ -691,8 +699,10 @@ export function parseJSON(jsonText: string): Expense[] {
       item.amount > 0
     ) {
       const cat = CATEGORIES.includes(item.category) ? item.category : 'Other';
+      const validId =
+        typeof item.id === 'string' && item.id.length === 36 ? item.id : generateUUID();
       validExpenses.push({
-        id: item.id || `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: validId,
         date: item.date,
         description: item.description,
         category: cat,

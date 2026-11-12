@@ -19,8 +19,6 @@ import {
   FileCode,
   AlertCircle,
   X,
-  AlertTriangle,
-  Lock,
 } from 'lucide-react';
 
 interface DataExportImportProps {
@@ -38,7 +36,7 @@ export default function DataExportImport({
   onClearAll,
   onToast,
 }: DataExportImportProps) {
-  const { canResetData, currentUser } = useAuth();
+  const { canResetData } = useAuth();
   const [importPreview, setImportPreview] = useState<{
     items: Expense[];
     fileName: string;
@@ -77,8 +75,8 @@ export default function DataExportImport({
           fileName: file.name,
           totalAmount,
         });
-      } catch (err: any) {
-        setErrorMessage(err?.message || 'Failed to parse file.');
+      } catch (err: unknown) {
+        setErrorMessage(err instanceof Error ? err.message : 'Failed to parse file.');
       }
     };
 

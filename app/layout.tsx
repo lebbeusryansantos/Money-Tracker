@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,7 +23,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Tracker — Minimalist Daily Expense Tracker",
   description:
-    "Ultra-clean, modern minimalist personal daily expense tracker inspired by Linear and Cron. Frictionless rapid micro-logging in Philippine Pesos (PHP).",
+    "Ultra-clean, modern minimalist personal daily expense tracker with Supabase cloud sync across phone and laptop.",
   icons: {
     icon: "/favicon.ico",
   },
@@ -39,7 +40,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} dark antialiased`}
     >
       <body className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/20 selection:text-emerald-300">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
