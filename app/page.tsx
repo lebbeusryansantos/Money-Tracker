@@ -5,6 +5,7 @@ import { Expense } from '@/lib/types';
 import {
   INITIAL_MOCK_DATA,
   loadStoredExpenses,
+  saveStoredExpenses,
   calculateMonthSummary,
   getMonthKey,
   formatCurrency,
@@ -15,7 +16,7 @@ import {
   isFutureDate,
 } from '@/lib/dateUtils';
 import { checkExpensePermission } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
   fetchCloudExpenses,
   createExpenseInCloud,
@@ -77,13 +78,25 @@ function ExpenseTrackerApp() {
 
   // Fetch expenses from Supabase cloud
   const loadCloudExpenses = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      const local = loadStoredExpenses();
+      setExpenses(local);
+      setIsLoadingExpenses(false);
+      return;
+    }
+
     try {
       const { data, error } = await fetchCloudExpenses();
 
       if (error) {
         showToast(`Cloud fetch: ${error.message}`, true);
+        const local = loadStoredExpenses();
+        if (local && local.length > 0) {
+          setExpenses(local);
+        }
       } else if (data && data.length > 0) {
         setExpenses(data);
+        saveStoredExpenses(data);
         const latest = [...data].sort((a, b) => b.date.localeCompare(a.date))[0];
         if (latest) {
           setSelectedMonth(latest.date.slice(0, 7));
@@ -96,6 +109,7 @@ function ExpenseTrackerApp() {
           const { data: migrated, error: migError } = await bulkInsertExpensesInCloud(localData);
           if (!migError && migrated && migrated.length > 0) {
             setExpenses(migrated);
+            saveStoredExpenses(migrated);
             showToast(`Synchronized ${migrated.length} transactions with Supabase!`);
             const latest = [...migrated].sort((a, b) => b.date.localeCompare(a.date))[0];
             if (latest) {
@@ -107,6 +121,10 @@ function ExpenseTrackerApp() {
       }
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to connect to Supabase database.', true);
+      const local = loadStoredExpenses();
+      if (local && local.length > 0) {
+        setExpenses(local);
+      }
     } finally {
       setIsLoadingExpenses(false);
     }
@@ -196,7 +214,9 @@ function ExpenseTrackerApp() {
 
     // Optimistic UI update
     const previous = [...expenses];
-    setExpenses([newExpense, ...expenses]);
+    const nextList = [newExpense, ...expenses];
+    setExpenses(nextList);
+    saveStoredExpenses(nextList);
 
     const expMonth = getMonthKey(newExpense.date);
     if (expMonth !== selectedMonth) {
@@ -209,9 +229,12 @@ function ExpenseTrackerApp() {
 
     if (error) {
       setExpenses(previous);
+      saveStoredExpenses(previous);
       showToast(`Cloud Sync Error: ${error.message}`, true);
     } else if (saved) {
-      setExpenses((curr) => curr.map((e) => (e.id === newExpense.id ? saved : e)));
+      const confirmed = nextList.map((e) => (e.id === newExpense.id ? saved : e));
+      setExpenses(confirmed);
+      saveStoredExpenses(confirmed);
       showToast(`Expense logged (${formatCurrency(newExpense.amount)})`);
     }
   };
@@ -231,7 +254,9 @@ function ExpenseTrackerApp() {
 
     // Optimistic UI update
     const previous = [...expenses];
-    setExpenses((curr) => curr.map((e) => (e.id === updated.id ? updated : e)));
+    const nextList = expenses.map((e) => (e.id === updated.id ? updated : e));
+    setExpenses(nextList);
+    saveStoredExpenses(nextList);
 
     setIsSyncing(true);
     const { error } = await updateExpenseInCloud(updated);
@@ -239,6 +264,7 @@ function ExpenseTrackerApp() {
 
     if (error) {
       setExpenses(previous);
+      saveStoredExpenses(previous);
       showToast(`Update Failed: ${error.message}`, true);
     } else {
       showToast(`Changes saved for "${updated.description}"`);
@@ -263,7 +289,9 @@ function ExpenseTrackerApp() {
 
     // Optimistic UI update
     const previous = [...expenses];
-    setExpenses((curr) => curr.filter((e) => e.id !== id));
+    const nextList = expenses.filter((e) => e.id !== id);
+    setExpenses(nextList);
+    saveStoredExpenses(nextList);
 
     setIsSyncing(true);
     const { error } = await deleteExpenseFromCloud(id);
@@ -271,6 +299,7 @@ function ExpenseTrackerApp() {
 
     if (error) {
       setExpenses(previous);
+      saveStoredExpenses(previous);
       showToast(`Delete Failed: ${error.message}`, true);
     } else {
       showToast(`Deleted "${target.description}"`);
