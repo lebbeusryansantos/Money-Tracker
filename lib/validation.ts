@@ -1,9 +1,12 @@
 import { Category } from './types';
 import { CATEGORIES } from './utils';
+import { formatTimeDisplay, getCurrentTimeHHMM, getClientTodayDateISO } from './dateUtils';
 
 export const MAX_SINGLE_EXPENSE_AMOUNT = 1_000_000.0;
 export const MIN_DESCRIPTION_LENGTH = 3;
 export const MAX_DESCRIPTION_LENGTH = 60;
+export const APP_START_DATE = '2026-11-01';
+export const MAX_ALLOWED_DATE = '2026-11-30';
 
 /**
  * Sanitizes input text to prevent XSS / script injection.
@@ -117,7 +120,10 @@ export function validateCategory(raw: string): { isValid: boolean; error?: strin
 }
 
 /**
- * Validates date format and rejects future dates beyond maxDate
+ * Validates date format and enforces:
+ * - Strictly beginning on November 1, 2026 (2026-11-01)
+ * - Rejects future dates beyond today/maxDate
+ * - Strictly locked December 2026 onwards
  */
 export function validateDate(
   raw: string,
@@ -128,6 +134,14 @@ export function validateDate(
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     return { isValid: false, error: 'Invalid date format (YYYY-MM-DD)' };
+  }
+
+  // Strict Nov 1, 2026 lower bound
+  if (raw < APP_START_DATE) {
+    return {
+      isValid: false,
+      error: 'Effective November 1, 2026 — Expense logging starts from Nov 1, 2026 onward.',
+    };
   }
 
   // Strict December 2026 onwards lock
@@ -151,21 +165,37 @@ export function validateDate(
 }
 
 /**
- * Validates time format (HH:MM) when active (Nov 12 onwards)
+ * Validates time format (HH:MM):
+ * - Enabled for valid dates from November 1, 2026 onwards
+ * - If selectedDate === today, time cannot exceed current local time
+ * - If selectedDate < today, any time (00:00 - 23:59) is valid
  */
 export function validateTime(
   time?: string,
-  date?: string
+  date?: string,
+  referenceToday?: string,
+  currentLocalTime?: string
 ): { isValid: boolean; error?: string } {
-  if (!date || date < '2026-11-12') {
-    return { isValid: true }; // Ignored for Nov 11 and before
+  if (!date || date < APP_START_DATE) {
+    return { isValid: true };
   }
   if (!time || !time.trim()) {
-    return { isValid: false, error: 'Time is required for November 12 onwards' };
+    return { isValid: false, error: 'Time is required' };
   }
   if (!/^\d{2}:\d{2}$/.test(time)) {
     return { isValid: false, error: 'Invalid time format (HH:MM)' };
   }
+
+  const today = referenceToday || getClientTodayDateISO();
+  const maxTime = currentLocalTime || getCurrentTimeHHMM();
+
+  if (date === today && time > maxTime) {
+    return {
+      isValid: false,
+      error: `Time cannot be in the future (current time is ${formatTimeDisplay(maxTime)})`,
+    };
+  }
+
   return { isValid: true };
 }
 
@@ -206,13 +236,14 @@ export function validateExpenseForm(
     date: string;
     time?: string;
   },
-  maxDate?: string
+  maxDate?: string,
+  currentLocalTime?: string
 ): FormValidationResult {
   const descResult = validateDescription(data.description);
   const amtResult = validateAmount(data.amount);
   const catResult = validateCategory(data.category);
   const dateResult = validateDate(data.date, maxDate);
-  const timeResult = validateTime(data.time, data.date);
+  const timeResult = validateTime(data.time, data.date, maxDate, currentLocalTime);
 
   const errors: FormValidationResult['errors'] = {};
   if (!descResult.isValid) errors.description = descResult.error;

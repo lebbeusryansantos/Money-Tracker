@@ -47,8 +47,10 @@ function ExpenseTrackerApp() {
   const [isLoadingExpenses, setIsLoadingExpenses] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-11');
-  const [todayDate, setTodayDate] = useState<string>('2026-11-12');
+  const [todayDate, setTodayDate] = useState<string>(() => getClientTodayDateISO());
   const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState<boolean>(true);
+  const [isInputFocused, setIsInputFocused] = useState<boolean>(false);
 
   const formRef = useRef<HTMLDivElement>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -58,6 +60,31 @@ function ExpenseTrackerApp() {
     () => true,
     () => false
   );
+
+  // Detect mobile keyboard / input focus globally to prevent overlapping sticky bar
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+        setIsInputFocused(true);
+      }
+    };
+    const handleFocusOut = () => {
+      setTimeout(() => {
+        const active = document.activeElement?.tagName?.toLowerCase();
+        if (active !== 'input' && active !== 'textarea' && active !== 'select') {
+          setIsInputFocused(false);
+        }
+      }, 80);
+    };
+
+    window.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('focusout', handleFocusOut);
+    return () => {
+      window.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('focusout', handleFocusOut);
+    };
+  }, []);
 
   // Toast notification helper (auto-dismisses after 3 seconds)
   const showToast = useCallback((text: string, isError = false) => {
@@ -71,9 +98,12 @@ function ExpenseTrackerApp() {
   }, []);
 
   const scrollToForm = useCallback(() => {
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const input = formRef.current?.querySelector('input');
-    input?.focus();
+    setIsFormOpen(true);
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const input = formRef.current?.querySelector('input');
+      input?.focus();
+    }, 60);
   }, []);
 
   // Fetch expenses from Supabase cloud
@@ -194,6 +224,12 @@ function ExpenseTrackerApp() {
 
   // Add new expense to Supabase Cloud
   const handleAddExpense = async (newExpData: Omit<Expense, 'id' | 'createdAt'>) => {
+    // Strictly block pre-November 1, 2026
+    if (newExpData.date < '2026-11-01') {
+      showToast('Effective November 1, 2026 — Expense logging starts from Nov 1, 2026 onward.', true);
+      return;
+    }
+
     // Strictly block December 2026 onwards
     if (newExpData.date >= '2026-12-01') {
       showToast('December 2026 onwards is strictly locked. No logging permitted.', true);
@@ -241,6 +277,11 @@ function ExpenseTrackerApp() {
 
   // Update existing expense in Supabase Cloud
   const handleUpdateExpense = async (updated: Expense) => {
+    if (updated.date < '2026-11-01') {
+      showToast('Effective November 1, 2026 — Expense logging starts from Nov 1, 2026 onward.', true);
+      return;
+    }
+
     if (updated.date >= '2026-12-01') {
       showToast('December 2026 onwards is strictly locked. Editing disabled.', true);
       return;
@@ -377,19 +418,20 @@ function ExpenseTrackerApp() {
     }
   };
 
-  // Calculate unique months available (Strictly capped before December 2026)
+  // Calculate unique months available (Strictly starts Nov 1, 2026, strictly capped before December 2026)
   const availableMonths = useMemo(() => {
     const monthSet = new Set<string>();
-    monthSet.add(selectedMonth);
-    monthSet.add(todayDate.slice(0, 7));
+    monthSet.add('2026-11');
     for (const exp of expenses) {
-      monthSet.add(exp.date.slice(0, 7));
+      if (exp.date >= '2026-11-01' && exp.date < '2026-12-01') {
+        monthSet.add(exp.date.slice(0, 7));
+      }
     }
     return Array.from(monthSet)
-      .filter((m) => m <= '2026-11')
+      .filter((m) => m >= '2026-11' && m <= '2026-11')
       .sort()
       .reverse();
-  }, [expenses, selectedMonth, todayDate]);
+  }, [expenses]);
 
   // Aggregate summary for selected month
   const monthSummary = useMemo(() => {
@@ -472,17 +514,9 @@ function ExpenseTrackerApp() {
             </div>
           </div>
 
-          {/* Cloud Sync Status Indicator & Quick Action Button */}
+          {/* Cloud Sync Status Indicator */}
           <div className="flex items-center gap-2.5">
             <AuthBar />
-
-            <button
-              onClick={scrollToForm}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Log Entry</span>
-            </button>
           </div>
         </div>
       </header>
@@ -517,6 +551,8 @@ function ExpenseTrackerApp() {
                     onInstantToast={(msg) => showToast(msg)}
                     currentDateISO={todayDate}
                     selectedMonth={selectedMonth}
+                    isOpen={isFormOpen}
+                    onToggleOpen={() => setIsFormOpen((p) => !p)}
                   />
                 </div>
 
@@ -568,23 +604,25 @@ function ExpenseTrackerApp() {
         )}
       </main>
 
-      {/* Mobile Sticky Quick Action Bar */}
-      <div className="sm:hidden fixed bottom-3 left-4 right-4 z-40 flex items-center justify-between p-2 rounded-xl bg-zinc-900/90 border border-zinc-800 backdrop-blur-lg shadow-2xl">
-        <div className="flex flex-col pl-2">
-          <span className="text-[10px] text-zinc-500 uppercase font-mono">Today&apos;s Spend</span>
-          <span className="text-xs font-mono font-bold text-zinc-200 tabular-nums">
-            {formatCurrency(monthSummary.todayTotal)}
-          </span>
-        </div>
+      {/* Mobile Sticky Quick Action Bar - Only displayed when form is collapsed & user is scrolling list */}
+      {!isFormOpen && !isInputFocused && (
+        <div className="sm:hidden fixed bottom-3 left-4 right-4 z-40 flex items-center justify-between p-2 rounded-xl bg-zinc-900/90 border border-zinc-800 backdrop-blur-lg shadow-2xl animate-in slide-in-from-bottom-2 duration-200">
+          <div className="flex flex-col pl-2">
+            <span className="text-[10px] text-zinc-500 uppercase font-mono">Today&apos;s Spend</span>
+            <span className="text-xs font-mono font-bold text-zinc-200 tabular-nums">
+              {formatCurrency(monthSummary.todayTotal)}
+            </span>
+          </div>
 
-        <button
-          onClick={scrollToForm}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs shadow-md active:scale-95 transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4 text-zinc-950 stroke-[3]" />
-          <span>Quick Log</span>
-        </button>
-      </div>
+          <button
+            onClick={scrollToForm}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs shadow-md active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4 text-zinc-950 stroke-[3]" />
+            <span>Quick Log</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

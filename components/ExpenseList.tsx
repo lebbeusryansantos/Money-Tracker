@@ -20,6 +20,7 @@ import {
   getClientTodayDateISO,
   isTimeFeatureEnabled,
   formatTimeDisplay,
+  getCurrentTimeHHMM,
   isDecemberOnwards,
 } from '@/lib/dateUtils';
 import { useAuth, checkExpensePermission } from '@/lib/permissions';
@@ -38,6 +39,7 @@ import {
   AlertTriangle,
   Lock,
   Clock,
+  Info,
 } from 'lucide-react';
 
 interface ExpenseListProps {
@@ -101,6 +103,11 @@ export default function ExpenseList({
   // Filter & Sort Logic
   const filteredExpenses = useMemo(() => {
     return expenses.filter((item) => {
+      // Strictly omit any pre-November 1 rows (Effective Nov 1, 2026)
+      if (item.date < '2026-11-01') {
+        return false;
+      }
+
       // Month match (if not 'All')
       if (selectedMonth && !item.date.startsWith(selectedMonth)) {
         return false;
@@ -278,17 +285,16 @@ export default function ExpenseList({
   };
 
   const handleSaveInlineEdit = (originalItem: Expense) => {
-    const timeActive = isTimeFeatureEnabled(editDate);
-
     const validation = validateExpenseForm(
       {
         description: editDesc,
         amount: editAmount,
         category: editCategory,
         date: editDate,
-        time: timeActive ? editTime : undefined,
+        time: editTime,
       },
-      todayISO
+      todayISO,
+      getCurrentTimeHHMM()
     );
 
     if (!validation.isValid) {
@@ -308,7 +314,7 @@ export default function ExpenseList({
       amount: validation.parsedAmount,
       category: editCategory,
       date: editDate,
-      time: timeActive ? (editTime || originalItem.time) : undefined,
+      time: editTime || originalItem.time,
       createdAt: originalItem.createdAt, // Preserved untouched
     });
 
@@ -580,9 +586,10 @@ export default function ExpenseList({
                             </div>
 
                             {/* Edit Date */}
-                            <div className={timeFeatureActive ? 'sm:col-span-4' : 'sm:col-span-6'}>
+                            <div className="sm:col-span-4">
                               <input
                                 type="date"
+                                min="2026-11-01"
                                 max={todayISO < '2026-11-30' ? todayISO : '2026-11-30'}
                                 value={editDate}
                                 onChange={(e) => setEditDate(e.target.value)}
@@ -595,23 +602,32 @@ export default function ExpenseList({
                               )}
                             </div>
 
-                            {/* Edit Time (Only active and editable on Nov 12 onwards) */}
-                            {timeFeatureActive && (
-                              <div className="sm:col-span-4">
-                                <input
-                                  type="time"
-                                  value={editTime}
-                                  title="Edit time"
-                                  onChange={(e) => setEditTime(e.target.value)}
-                                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
-                                />
-                                {editErrors.time && (
-                                  <span className="text-[10px] text-rose-400 block mt-0.5">
-                                    {editErrors.time}
-                                  </span>
-                                )}
-                              </div>
-                            )}
+                            {/* Edit Time (Custom time input enabled for all valid past dates) */}
+                            <div className="sm:col-span-4">
+                              <input
+                                type="time"
+                                value={editTime}
+                                max={editDate === todayISO ? getCurrentTimeHHMM() : undefined}
+                                title={
+                                  editDate === todayISO
+                                    ? `Edit time (up to current time: ${formatTimeDisplay(getCurrentTimeHHMM())})`
+                                    : 'Edit time (00:00 to 23:59)'
+                                }
+                                onChange={(e) => setEditTime(e.target.value)}
+                                className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-zinc-500 cursor-pointer"
+                              />
+                              {editErrors.time && (
+                                <span className="text-[10px] text-rose-400 block mt-0.5">
+                                  {editErrors.time}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Helper Caption Notice: Effective November 1, 2026 */}
+                          <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 pt-0.5">
+                            <Info className="w-3 h-3 text-emerald-400/80 shrink-0" />
+                            <span>Effective November 1, 2026 — Expense logging and schedule tracking start from Nov 1, 2026 onward.</span>
                           </div>
 
                           {/* Action Buttons for Inline Edit */}
@@ -662,13 +678,13 @@ export default function ExpenseList({
                                 {item.category}
                               </span>
 
-                              {/* Timing feature: ONLY rendered on November 12 onwards! Ignored on Nov 11 & before */}
-                              {timeFeatureActive && (
+                              {/* Timing feature: Rendered when item has custom time or on Nov 12 onwards */}
+                              {(item.time || (timeFeatureActive && item.date >= '2026-11-12' && item.createdAt)) && (
                                 <>
                                   <span>·</span>
                                   <span className="font-mono text-[11px] text-zinc-400 flex items-center gap-0.5">
                                     <Clock className="w-2.5 h-2.5 inline text-zinc-500" />
-                                    <span>{formatTimeDisplay(item.time, item.createdAt)}</span>
+                                    <span>{formatTimeDisplay(item.time, item.date >= '2026-11-12' ? item.createdAt : undefined)}</span>
                                   </span>
                                 </>
                               )}

@@ -650,8 +650,8 @@ export function parseCSV(csvText: string): Expense[] {
       const amountStr = tokens[3].replace(/[₱,$\s]/g, '');
       const amount = parseFloat(amountStr);
 
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        continue; // skip invalid date
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < '2026-11-01' || date >= '2026-12-01') {
+        continue; // skip invalid or out-of-period date
       }
 
       if (!CATEGORIES.includes(category)) {
@@ -695,6 +695,8 @@ export function parseJSON(jsonText: string): Expense[] {
       item &&
       typeof item.description === 'string' &&
       typeof item.date === 'string' &&
+      item.date >= '2026-11-01' &&
+      item.date < '2026-12-01' &&
       typeof item.amount === 'number' &&
       item.amount > 0
     ) {

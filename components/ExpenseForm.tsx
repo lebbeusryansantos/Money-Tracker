@@ -20,8 +20,8 @@ import {
 import {
   getClientTodayDateISO,
   getMillisecondsUntilMidnight,
-  isTimeFeatureEnabled,
   getCurrentTimeHHMM,
+  formatTimeDisplay,
   isDecemberOnwards,
 } from '@/lib/dateUtils';
 import {
@@ -32,6 +32,9 @@ import {
   X,
   AlertCircle,
   Lock,
+  ChevronDown,
+  ChevronUp,
+  Info,
 } from 'lucide-react';
 
 interface ExpenseFormProps {
@@ -39,6 +42,8 @@ interface ExpenseFormProps {
   onInstantToast?: (message: string) => void;
   currentDateISO?: string;
   selectedMonth?: string;
+  isOpen?: boolean;
+  onToggleOpen?: () => void;
 }
 
 export default function ExpenseForm({
@@ -46,15 +51,19 @@ export default function ExpenseForm({
   onInstantToast,
   currentDateISO,
   selectedMonth = '2026-11',
+  isOpen = true,
+  onToggleOpen,
 }: ExpenseFormProps) {
   const isMonthLocked = isDecemberOnwards(selectedMonth);
-  const activeDate = currentDateISO || '2026-11-12';
+  const activeDate = currentDateISO || getClientTodayDateISO();
+  const effectiveMaxDate = activeDate < '2026-11-30' ? activeDate : '2026-11-30';
 
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<Category>('Food');
-  const [date, setDate] = useState<string>(currentDateISO || '2026-11-12');
-  const [time, setTime] = useState<string>('12:00');
+  const [date, setDate] = useState<string>(currentDateISO || '2026-11-14');
+  const [time, setTime] = useState<string>(() => getCurrentTimeHHMM());
+  const [currentLocalTime, setCurrentLocalTime] = useState<string>(() => getCurrentTimeHHMM());
   const [presets, setPresets] = useState<PresetExpense[]>(() => {
     if (typeof window === 'undefined') return DEFAULT_PRESETS;
     try {
@@ -90,7 +99,6 @@ export default function ExpenseForm({
   });
 
   const descInputRef = useRef<HTMLInputElement>(null);
-  const timeActive = isTimeFeatureEnabled(date);
 
   // Synchronize client date on mount and schedule automatic midnight rollover
   useEffect(() => {
@@ -110,6 +118,14 @@ export default function ExpenseForm({
     return () => clearTimeout(timerId);
   }, []);
 
+  // Keep current local time updated periodically
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentLocalTime(getCurrentTimeHHMM());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
   const savePresets = (newPresets: PresetExpense[]) => {
     setPresets(newPresets);
     try {
@@ -119,20 +135,20 @@ export default function ExpenseForm({
     }
   };
 
-  // Real-time validation computation (capped at 2026-11-30)
+  // Real-time validation computation (strictly bounded: 2026-11-01 <= date <= effectiveMaxDate)
   const validation = useMemo(() => {
-    const effectiveMaxDate = activeDate < '2026-11-30' ? activeDate : '2026-11-30';
     return validateExpenseForm(
       {
         description,
         amount,
         category,
         date,
-        time: timeActive ? time : undefined,
+        time,
       },
-      effectiveMaxDate
+      effectiveMaxDate,
+      currentLocalTime
     );
-  }, [description, amount, category, date, time, timeActive, activeDate]);
+  }, [description, amount, category, date, time, effectiveMaxDate, currentLocalTime]);
 
   const trimmedDescLen = description.trim().length;
 
@@ -178,6 +194,13 @@ export default function ExpenseForm({
       return;
     }
 
+    if (date < '2026-11-01') {
+      if (onInstantToast) {
+        onInstantToast('Effective November 1, 2026 — Expense logging starts from Nov 1, 2026 onward.');
+      }
+      return;
+    }
+
     setTouched({ description: true, amount: true, date: true, time: true });
 
     if (!validation.isValid) {
@@ -186,7 +209,7 @@ export default function ExpenseForm({
 
     onAddExpense({
       date: date || activeDate,
-      time: timeActive ? (time || getCurrentTimeHHMM()) : undefined,
+      time: time || getCurrentTimeHHMM(),
       description: validation.sanitizedDescription,
       category,
       amount: validation.parsedAmount,
@@ -216,7 +239,7 @@ export default function ExpenseForm({
 
     onAddExpense({
       date: activeDate,
-      time: isTimeFeatureEnabled(activeDate) ? getCurrentTimeHHMM() : undefined,
+      time: getCurrentTimeHHMM(),
       description: preset.description,
       category: preset.category,
       amount: preset.amount,
@@ -229,6 +252,33 @@ export default function ExpenseForm({
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1200);
   };
+
+  // Collapsed View (Allows user to hide form and use sticky bottom bar)
+  if (!isOpen) {
+    return (
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3.5 sm:p-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-2.5 text-xs text-zinc-300">
+          <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+          </div>
+          <div>
+            <div className="font-semibold text-zinc-200">Expense Entry Form (Collapsed)</div>
+            <div className="text-[11px] text-zinc-500">Tap Expand or use + Quick Log when scrolling</div>
+          </div>
+        </div>
+        {onToggleOpen && (
+          <button
+            type="button"
+            onClick={onToggleOpen}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors cursor-pointer"
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+            <span>Expand Form</span>
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`rounded-xl border p-3 sm:p-4 shadow-sm backdrop-blur-sm transition-all ${
@@ -255,16 +305,30 @@ export default function ExpenseForm({
             <span className="text-[10px] text-zinc-500 hidden sm:inline">(Tap to log instantly)</span>
           </div>
 
-          {!isMonthLocked && (
-            <button
-              type="button"
-              onClick={() => setIsManagingPresets(!isManagingPresets)}
-              className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-            >
-              <SlidersHorizontal className="w-3 h-3" />
-              <span>{isManagingPresets ? 'Done' : 'Customize'}</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {!isMonthLocked && (
+              <button
+                type="button"
+                onClick={() => setIsManagingPresets(!isManagingPresets)}
+                className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+                <span>{isManagingPresets ? 'Done' : 'Customize'}</span>
+              </button>
+            )}
+
+            {onToggleOpen && (
+              <button
+                type="button"
+                onClick={onToggleOpen}
+                title="Collapse expense form"
+                className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 px-2 py-0.5 rounded bg-zinc-800/60 border border-zinc-700/60 transition-colors cursor-pointer"
+              >
+                <ChevronUp className="w-3 h-3" />
+                <span className="hidden sm:inline">Collapse</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Preset management drawer */}
@@ -451,7 +515,7 @@ export default function ExpenseForm({
         {/* Line 2: Category, Date & Time */}
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5 items-start">
           {/* Category Dropdown */}
-          <div className={timeActive ? 'sm:col-span-4' : 'sm:col-span-6'}>
+          <div className="sm:col-span-4">
             <select
               value={category}
               disabled={isMonthLocked}
@@ -466,11 +530,12 @@ export default function ExpenseForm({
             </select>
           </div>
 
-          {/* Date Picker (Strict max of 2026-11-30) */}
-          <div className={timeActive ? 'sm:col-span-4' : 'sm:col-span-6'}>
+          {/* Date Picker (Strict min: 2026-11-01, Strict max: effectiveMaxDate) */}
+          <div className="sm:col-span-4">
             <input
               type="date"
-              max="2026-11-30"
+              min="2026-11-01"
+              max={effectiveMaxDate}
               disabled={isMonthLocked}
               value={date}
               onBlur={() => setTouched((p) => ({ ...p, date: true }))}
@@ -492,70 +557,96 @@ export default function ExpenseForm({
             )}
           </div>
 
-          {/* Timing Input: Only active on November 12 onwards */}
-          {timeActive && (
-            <div className="sm:col-span-4">
-              <input
-                type="time"
-                disabled={isMonthLocked}
-                value={time}
-                title="Time of expense"
-                onChange={(e) => setTime(e.target.value)}
-                className="w-full bg-zinc-950/90 border border-zinc-800 rounded-lg px-3 py-2 text-sm font-mono text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-          )}
+          {/* Timing Input: Fully enabled for past dates (00:00-23:59), capped at current time if today */}
+          <div className="sm:col-span-4">
+            <input
+              type="time"
+              disabled={isMonthLocked}
+              max={date === activeDate ? currentLocalTime : undefined}
+              value={time}
+              title={
+                date === activeDate
+                  ? `Time of expense (up to current time: ${formatTimeDisplay(currentLocalTime)})`
+                  : 'Time of expense (00:00 to 23:59)'
+              }
+              onBlur={() => setTouched((p) => ({ ...p, time: true }))}
+              onChange={(e) => {
+                setTime(e.target.value);
+                setTouched((p) => ({ ...p, time: true }));
+              }}
+              className={`w-full bg-zinc-950/90 border rounded-lg px-3 py-2 text-sm font-mono text-zinc-300 focus:outline-none transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                touched.time && validation.errors.time
+                  ? 'border-rose-500/80 focus:ring-1 focus:ring-rose-500'
+                  : 'border-zinc-800 focus:ring-1 focus:ring-zinc-600 focus:border-zinc-700'
+              }`}
+            />
+            {touched.time && validation.errors.time && (
+              <div className="flex items-center gap-1 text-rose-400 text-xs mt-1 animate-in fade-in">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>{validation.errors.time}</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Category Pills & Action Buttons */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          {/* Quick Category Selector Pills */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-zinc-500 hidden sm:inline mr-1">
-              Category:
-            </span>
-            {CATEGORIES.map((cat) => {
-              const config = CATEGORY_CONFIG[cat];
-              const isSelected = category === cat;
-              return (
-                <button
-                  key={cat}
-                  type="button"
-                  disabled={isMonthLocked}
-                  onClick={() => setCategory(cat)}
-                  className={`text-xs px-2.5 py-1 rounded-md transition-all cursor-pointer border disabled:opacity-40 disabled:cursor-not-allowed ${
-                    isSelected
-                      ? `${config.color} border-current font-medium shadow-sm`
-                      : 'bg-zinc-950/50 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-                  }`}
-                >
-                  {cat}
-                </button>
-              );
-            })}
-          </div>
+        {/* Helper Caption Notice: Effective November 1, 2026 */}
+        <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 pt-0.5">
+          <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span>Effective November 1, 2026 — Expense logging and schedule tracking start from Nov 1, 2026 onward.</span>
+        </div>
 
-          {/* Submit Button */}
+        {/* Quick Category Selector Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[11px] text-zinc-500 hidden sm:inline mr-1">
+            Category:
+          </span>
+          {CATEGORIES.map((cat) => {
+            const config = CATEGORY_CONFIG[cat];
+            const isSelected = category === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                disabled={isMonthLocked}
+                onClick={() => setCategory(cat)}
+                className={`text-xs px-2.5 py-1 rounded-md transition-all cursor-pointer border disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isSelected
+                    ? `${config.color} border-current font-medium shadow-sm`
+                    : 'bg-zinc-950/50 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                }`}
+              >
+                {cat}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Primary Full-Width Emerald Green Submit Button */}
+        <div className="pt-2">
           <button
             type="submit"
             disabled={!validation.isValid || isMonthLocked}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-sm transition-all shadow-sm active:scale-98 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-100"
+            className={`w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+              !validation.isValid || isMonthLocked
+                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50 shadow-none'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 active:scale-[0.99] shadow-emerald-950/40'
+            }`}
           >
             {justAdded ? (
               <>
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span className="text-emerald-700 font-semibold">Added!</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-950 stroke-[2.5]" />
+                <span className="font-bold">Added to Ledger!</span>
               </>
             ) : isMonthLocked ? (
               <>
                 <Lock className="w-4 h-4 text-zinc-500" />
-                <span>Locked</span>
+                <span>December 2026 Onwards Locked</span>
               </>
             ) : (
               <>
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4 text-zinc-950 stroke-[3]" />
                 <span>Log Expense</span>
-                <span className="text-xs text-zinc-500 font-mono hidden md:inline ml-1">
+                <span className="text-xs text-zinc-800 font-mono hidden sm:inline ml-1 opacity-70">
                   ↵
                 </span>
               </>

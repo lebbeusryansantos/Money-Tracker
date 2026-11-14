@@ -13,6 +13,7 @@ import {
   BarChart3,
   Sparkles,
   Lock,
+  Info,
 } from 'lucide-react';
 
 interface DashboardMetricsProps {
@@ -28,22 +29,21 @@ export default function DashboardMetrics({
   selectedMonth,
   onSelectMonth,
   availableMonths,
-  todayDate = '2026-11-11',
+  todayDate = '2026-11-14',
 }: DashboardMetricsProps) {
   // Navigation
   const currentIndex = availableMonths.indexOf(selectedMonth);
   const hasPrevious = currentIndex < availableMonths.length - 1;
   const hasNext = currentIndex > 0;
 
+  const isAtStartMonth = selectedMonth <= '2026-11';
+
   const goToPrevMonth = () => {
+    if (selectedMonth <= '2026-11') return;
     if (hasPrevious) {
-      onSelectMonth(availableMonths[currentIndex + 1]);
-    } else {
-      // Decrement month mathematically
-      const [y, m] = selectedMonth.split('-').map(Number);
-      const prevDate = new Date(y, m - 2, 1);
-      const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-      onSelectMonth(prevKey);
+      const prevCandidate = availableMonths[currentIndex + 1];
+      if (prevCandidate < '2026-11') return;
+      onSelectMonth(prevCandidate);
     }
   };
 
@@ -53,7 +53,7 @@ export default function DashboardMetrics({
       if (nextCandidate >= '2026-12') return;
       onSelectMonth(nextCandidate);
     } else {
-      // Decrement month mathematically but strictly cap before December 2026
+      // Cap strictly before December 2026
       const [y, m] = selectedMonth.split('-').map(Number);
       const nextDate = new Date(y, m, 1);
       const nextKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
@@ -74,48 +74,58 @@ export default function DashboardMetrics({
 
   return (
     <section className="space-y-4">
-      {/* Top Month Navigation Bar */}
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-sm font-medium text-zinc-200">
-            <Calendar className="w-4 h-4 text-zinc-400" />
-            <span>{summary.label}</span>
+      {/* Top Month Navigation Bar & Effective Date Notice */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-sm font-medium text-zinc-200">
+              <Calendar className="w-4 h-4 text-zinc-400" />
+              <span>{summary.label}</span>
+            </div>
+
+            {(isDecLocked || summary.isLocked || selectedMonth > currentMonthKey) && (
+              <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
+                <Lock className="w-3 h-3" />
+                <span>{isDecLocked ? 'Strictly Locked Period' : 'Read-Only Period'}</span>
+              </span>
+            )}
+
+            {!isCurrentMonth && (
+              <button
+                onClick={() => onSelectMonth(currentMonthKey)}
+                className="text-xs px-2.5 py-1 rounded-md bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
+              >
+                Current Month
+              </button>
+            )}
           </div>
 
-          {(isDecLocked || summary.isLocked || selectedMonth > currentMonthKey) && (
-            <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
-              <Lock className="w-3 h-3" />
-              <span>{isDecLocked ? 'Strictly Locked Period' : 'Read-Only Period'}</span>
-            </span>
-          )}
-
-          {!isCurrentMonth && (
+          {/* Month Selector Buttons - Strictly disables navigation to October 2026 or earlier */}
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => onSelectMonth(currentMonthKey)}
-              className="text-xs px-2.5 py-1 rounded-md bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
+              onClick={goToPrevMonth}
+              disabled={isAtStartMonth}
+              title={isAtStartMonth ? 'Tracker starts strictly on November 1, 2026' : 'Previous month'}
+              aria-label="Previous month"
+              className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              Current Month
+              <ChevronLeft className="w-4 h-4" />
             </button>
-          )}
+            <button
+              onClick={goToNextMonth}
+              disabled={selectedMonth >= '2026-11' || isDecLocked}
+              aria-label="Next month"
+              className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Month Selector Buttons */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={goToPrevMonth}
-            aria-label="Previous month"
-            className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 transition-colors cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            onClick={goToNextMonth}
-            disabled={selectedMonth >= '2026-11' || isDecLocked}
-            aria-label="Next month"
-            className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+        {/* Informational Subheader Notice: Effective November 1, 2026 */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-400">
+          <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span>Effective November 1, 2026 — Expense logging and schedule tracking start from Nov 1, 2026 onward.</span>
         </div>
       </div>
 

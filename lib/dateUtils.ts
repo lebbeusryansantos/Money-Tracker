@@ -1,19 +1,24 @@
 /**
  * Date utilities for local date sync, future date locking,
  * midnight rollover detection, and period immutability.
+ * 
+ * Strict Application Boundaries:
+ * - Begins: November 1, 2026 (2026-11-01)
+ * - Maximum Month: November 2026 (2026-11)
+ * - Strictly Locked: December 2026 onwards (2026-12)
  */
 
-export const TIME_FEATURE_START_DATE = '2026-11-12';
+export const APP_START_DATE = '2026-11-01';
+export const TIME_FEATURE_START_DATE = '2026-11-01';
 export const LOCKED_DECEMBER_ONWARDS = '2026-12';
 export const MAX_ALLOWED_DATE = '2026-11-30';
 
 /**
- * Returns client's current local date in ISO format (YYYY-MM-DD)
- * capped at MAX_ALLOWED_DATE if past November 2026.
+ * Returns client's current local date in ISO format (YYYY-MM-DD).
  */
 export function getClientTodayDateISO(): string {
   if (typeof window === 'undefined') {
-    return '2026-11-11';
+    return '2026-11-14';
   }
   try {
     const local = new Date().toLocaleDateString('en-CA');
@@ -61,11 +66,10 @@ export function formatTimeDisplay(timeStr?: string, timestamp?: number): string 
 
 /**
  * Determines whether the timing feature is active.
- * Only implemented on November 12, 2026 onwards.
- * For November 11, 2026 and before, time is ignored.
+ * Enabled for all valid dates from November 1, 2026 onwards.
  */
 export function isTimeFeatureEnabled(dateStr: string): boolean {
-  return dateStr >= TIME_FEATURE_START_DATE;
+  return dateStr >= APP_START_DATE && !isDecemberOnwards(dateStr);
 }
 
 /**
@@ -88,9 +92,11 @@ export function isFutureDate(dateStr: string, referenceToday?: string): boolean 
 
 /**
  * Checks whether an entire month period (YYYY-MM) is locked.
- * December 2026 and future periods are strictly locked and read-only.
+ * - October 2026 and earlier are outside the valid scope (Effective Nov 1, 2026)
+ * - December 2026 and future periods are strictly locked and read-only.
  */
 export function isPeriodLocked(monthKey: string, currentMonthKey?: string): boolean {
+  if (monthKey < '2026-11') return true;
   if (isDecemberOnwards(monthKey)) return true;
   const current = currentMonthKey || getClientTodayDateISO().slice(0, 7);
   return monthKey > current;
@@ -98,10 +104,14 @@ export function isPeriodLocked(monthKey: string, currentMonthKey?: string): bool
 
 /**
  * Determines whether a record is editable based on date rules:
+ * - Must be on or after November 1, 2026
  * - December 2026 onwards is completely locked
  * - Records cannot have future dates beyond today
  */
 export function isRecordEditable(dateString: string, maxDate?: string): boolean {
+  if (dateString < APP_START_DATE) {
+    return false;
+  }
   if (isDecemberOnwards(dateString)) {
     return false;
   }
